@@ -21,10 +21,7 @@ const (
 )
 
 const (
-	moveInterval  = 150 * time.Millisecond
-	standDuration = 300 * time.Millisecond
-	dragInterval  = 8 * time.Millisecond
-	stepSize      = 20
+	dragInterval = 8 * time.Millisecond
 )
 
 const (
@@ -80,170 +77,6 @@ type winPoint struct {
 	Y int32
 }
 
-type Movement struct {
-	mu        sync.Mutex
-	x, y      int
-	direction Direction
-	minX      int
-	maxX      int
-	moveTimer *time.Timer
-	onUpdate  func(x, y int, direction Direction, walking bool)
-	running   bool
-}
-
-func NewMovement(x, y, minX, maxX int) *Movement {
-	m := &Movement{
-		x:         x,
-		y:         y,
-		direction: Right,
-		minX:      minX,
-		maxX:      maxX,
-	}
-	if rand.Intn(2) == 0 {
-		m.direction = Left
-	}
-	return m
-}
-
-func (m *Movement) SetCallback(cb func(x, y int, direction Direction, walking bool)) {
-	m.onUpdate = cb
-}
-
-func (m *Movement) Start() {
-	m.mu.Lock()
-	m.running = true
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-		m.moveTimer = nil
-	}
-	m.mu.Unlock()
-
-	m.doMove()
-}
-
-func (m *Movement) Resume() {
-	m.mu.Lock()
-	m.running = true
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-		m.moveTimer = nil
-	}
-	m.mu.Unlock()
-
-	m.scheduleNextWalk()
-}
-
-func (m *Movement) Stop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.running = false
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-		m.moveTimer = nil
-	}
-}
-
-func (m *Movement) SetPosition(x, y int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.x = x
-	m.y = y
-}
-
-func (m *Movement) doMove() {
-	m.mu.Lock()
-	if !m.running {
-		m.mu.Unlock()
-		return
-	}
-
-	if m.direction == Right {
-		m.x += stepSize
-	} else {
-		m.x -= stepSize
-	}
-
-	bounced := false
-	if m.x < m.minX {
-		m.x = m.minX
-		m.direction = Right
-		bounced = true
-	} else if m.x > m.maxX {
-		m.x = m.maxX
-		m.direction = Left
-		bounced = true
-	}
-
-	m.notifyUpdateLocked(true)
-	m.mu.Unlock()
-
-	if bounced {
-		m.scheduleBounce()
-		return
-	}
-
-	m.scheduleStand()
-}
-
-func (m *Movement) scheduleStand() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.running {
-		return
-	}
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-	}
-	m.moveTimer = time.AfterFunc(standDuration, m.doStand)
-}
-
-func (m *Movement) doStand() {
-	m.mu.Lock()
-	if !m.running {
-		m.mu.Unlock()
-		return
-	}
-	m.notifyUpdateLocked(false)
-	m.mu.Unlock()
-
-	m.scheduleNextWalk()
-}
-
-func (m *Movement) scheduleNextWalk() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.running {
-		return
-	}
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-	}
-	m.moveTimer = time.AfterFunc(moveInterval, m.doMove)
-}
-
-func (m *Movement) scheduleBounce() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.running {
-		return
-	}
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-	}
-	m.moveTimer = time.AfterFunc(standDuration, m.doStand)
-}
-
-func (m *Movement) notifyUpdateLocked(walking bool) {
-	if m.onUpdate != nil {
-		m.onUpdate(m.x, m.y, m.direction, walking)
-	}
-}
-
 func NewApp() *App {
 	rand.Seed(time.Now().UnixNano())
 	return &App{}
@@ -258,7 +91,7 @@ func (a *App) startup(ctx context.Context) {
 	maxX := screenX + screenW - petWidth
 
 	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", a.cfg.Position.X, a.cfg.Position.Y, minX, maxX)
-	a.movement = NewMovement(a.cfg.Position.X, a.cfg.Position.Y, minX, maxX)
+	a.movement = NewMovement(a.cfg.Position.X, a.cfg.Position.Y, minX, maxX, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
 	a.movement.SetCallback(func(x, y int, direction Direction, walking bool) {
 		if a.isDragActive() {
 			return
