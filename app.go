@@ -43,7 +43,11 @@ var (
 )
 
 type Config struct {
-	Position Position `json:"position"`
+	Position       Position `json:"position"`
+	Visible        bool     `json:"visible"`
+	ScalePercent   int      `json:"scalePercent"`
+	StepSize       int      `json:"stepSize"`
+	WalkIntervalMs int      `json:"walkIntervalMs"`
 }
 
 type Position struct {
@@ -275,7 +279,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) loadConfig() *Config {
-	cfg := &Config{Position: Position{X: 100, Y: 100}}
+	cfg := newDefaultConfig()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return cfg
@@ -288,6 +292,7 @@ func (a *App) loadConfig() *Config {
 	if len(data) > 0 {
 		_ = json.Unmarshal(data, cfg)
 	}
+	NormalizeConfig(cfg)
 	return cfg
 }
 
@@ -494,7 +499,7 @@ func (a *App) setCurrentPosition(x, y int) {
 	defer a.mu.Unlock()
 
 	if a.cfg == nil {
-		a.cfg = &Config{}
+		a.cfg = newDefaultConfig()
 	}
 	a.cfg.Position.X = x
 	a.cfg.Position.Y = y
