@@ -98,6 +98,16 @@ function setupRuntimeListener() {
     window.runtime.EventsOn('dragEnded', () => {
         setDraggingState(false);
     });
+
+    window.runtime.EventsOn('updatePetSettings', (data) => {
+        if (typeof data?.width === 'number' && Number.isFinite(data.width)) {
+            root.style.setProperty('--pet-width', `${data.width}px`);
+        }
+
+        if (typeof data?.height === 'number' && Number.isFinite(data.height)) {
+            root.style.setProperty('--pet-height', `${data.height}px`);
+        }
+    });
 }
 
 window.showPet = () => pet.classList.remove('hidden');

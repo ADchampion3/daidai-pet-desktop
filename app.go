@@ -16,11 +16,6 @@ import (
 )
 
 const (
-	petWidth  = 100
-	petHeight = 153
-)
-
-const (
 	dragInterval = 8 * time.Millisecond
 )
 
@@ -86,12 +81,15 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.cfg = a.loadConfig()
 
+	width, height := a.petSize()
 	screenX, _, screenW, _ := getVirtualScreenBounds()
 	minX := screenX
-	maxX := screenX + screenW - petWidth
+	maxX := screenX + screenW - width
+	x, y := clampWindowPositionForSize(a.cfg.Position.X, a.cfg.Position.Y, width, height)
+	a.setCurrentPosition(x, y)
 
-	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", a.cfg.Position.X, a.cfg.Position.Y, minX, maxX)
-	a.movement = NewMovement(a.cfg.Position.X, a.cfg.Position.Y, minX, maxX, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
+	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", x, y, minX, maxX)
+	a.movement = NewMovement(x, y, minX, maxX, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
 	a.movement.SetCallback(func(x, y int, direction Direction, walking bool) {
 		if a.isDragActive() {
 			return
@@ -102,8 +100,8 @@ func (a *App) startup(ctx context.Context) {
 		a.emitAnimationState(direction, walking)
 	})
 
-	a.setCurrentPosition(a.cfg.Position.X, a.cfg.Position.Y)
-	a.moveWindow(a.cfg.Position.X, a.cfg.Position.Y)
+	a.applyWindowSize()
+	a.moveWindow(x, y)
 
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -177,10 +175,17 @@ func getVirtualScreenBounds() (int, int, int, int) {
 	return int(int32(x)), int(int32(y)), int(w), int(h)
 }
 
-func clampWindowPosition(x, y int) (int, int) {
+func clampWindowPositionForSize(x, y int, width, height int) (int, int) {
 	screenX, screenY, screenW, screenH := getVirtualScreenBounds()
-	maxX := screenX + screenW - petWidth
-	maxY := screenY + screenH - petHeight
+	maxX := screenX + screenW - width
+	maxY := screenY + screenH - height
+
+	if maxX < screenX {
+		maxX = screenX
+	}
+	if maxY < screenY {
+		maxY = screenY
+	}
 
 	if x < screenX {
 		x = screenX
@@ -195,6 +200,22 @@ func clampWindowPosition(x, y int) (int, int) {
 	}
 
 	return x, y
+}
+
+func (a *App) petSize() (int, int) {
+	a.mu.RLock()
+	scalePercent := defaultScalePercent
+	if a.cfg != nil {
+		scalePercent = a.cfg.ScalePercent
+	}
+	a.mu.RUnlock()
+
+	return petSizeForScale(scalePercent)
+}
+
+func (a *App) clampWindowPosition(x, y int) (int, int) {
+	width, height := a.petSize()
+	return clampWindowPositionForSize(x, y, width, height)
 }
 
 func (a *App) SetDragStart() {
@@ -255,7 +276,7 @@ func (a *App) runDragLoop(seq uint64, stop <-chan struct{}) {
 			offsetY := a.dragOffsetY
 			a.mu.RUnlock()
 
-			x, y := clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
+			x, y := a.clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
 			a.setCurrentPosition(x, y)
 			a.moveWindow(x, y)
 		}
@@ -278,7 +299,7 @@ func (a *App) completeDragFromCursor() {
 	offsetY := a.dragOffsetY
 	a.mu.RUnlock()
 
-	x, y := clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
+	x, y := a.clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
 	a.completeDrag(seq, x, y)
 }
 
@@ -353,6 +374,16 @@ func (a *App) moveWindow(x, y int) {
 	runtime.WindowSetPosition(a.ctx, x, y)
 }
 
+func (a *App) applyWindowSize() {
+	if a.ctx == nil {
+		return
+	}
+
+	width, height := a.petSize()
+	runtime.WindowSetSize(a.ctx, width, height)
+	a.emitPetSettings()
+}
+
 func (a *App) emitDragEnded() {
 	if a.ctx == nil {
 		return
@@ -379,5 +410,25 @@ func (a *App) emitAnimationState(direction Direction, walking bool) {
 	runtime.EventsEmit(a.ctx, "updatePositionState", map[string]interface{}{
 		"state": stateStr,
 		"dir":   dirStr,
+	})
+}
+
+func (a *App) emitPetSettings() {
+	if a.ctx == nil {
+		return
+	}
+
+	width, height := a.petSize()
+	a.mu.RLock()
+	scalePercent := defaultScalePercent
+	if a.cfg != nil {
+		scalePercent = a.cfg.ScalePercent
+	}
+	a.mu.RUnlock()
+
+	runtime.EventsEmit(a.ctx, "updatePetSettings", map[string]interface{}{
+		"width":        width,
+		"height":       height,
+		"scalePercent": scalePercent,
 	})
 }

@@ -1,4 +1,6 @@
 :root {
+    --pet-width: 100px;
+    --pet-height: 153px;
     --pet-sprite: url("./assets/stand_r.png");
 }
 
@@ -21,9 +23,14 @@ body {
     -webkit-user-select: none;
 }
 
+#app {
+    width: var(--pet-width);
+    height: var(--pet-height);
+}
+
 #pet {
-    width: 100px;
-    height: 153px;
+    width: var(--pet-width);
+    height: var(--pet-height);
     position: absolute;
     top: 0;
     left: 0;
