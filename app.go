@@ -413,11 +413,7 @@ func (a *App) emitAnimationState(direction Direction, walking bool) {
 	})
 }
 
-func (a *App) emitPetSettings() {
-	if a.ctx == nil {
-		return
-	}
-
+func (a *App) GetPetSettings() map[string]int {
 	width, height := a.petSize()
 	a.mu.RLock()
 	scalePercent := defaultScalePercent
@@ -426,9 +422,17 @@ func (a *App) emitPetSettings() {
 	}
 	a.mu.RUnlock()
 
-	runtime.EventsEmit(a.ctx, "updatePetSettings", map[string]interface{}{
+	return map[string]int{
 		"width":        width,
 		"height":       height,
 		"scalePercent": scalePercent,
-	})
+	}
+}
+
+func (a *App) emitPetSettings() {
+	if a.ctx == nil {
+		return
+	}
+
+	runtime.EventsEmit(a.ctx, "updatePetSettings", a.GetPetSettings())
 }

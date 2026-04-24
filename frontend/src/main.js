@@ -18,6 +18,16 @@ let currentDir = 'r';
 let currentState = 'stand';
 let isDragging = false;
 
+function applyPetSettings(data) {
+    if (typeof data?.width === 'number' && Number.isFinite(data.width)) {
+        root.style.setProperty('--pet-width', `${data.width}px`);
+    }
+
+    if (typeof data?.height === 'number' && Number.isFinite(data.height)) {
+        root.style.setProperty('--pet-height', `${data.height}px`);
+    }
+}
+
 function updateSprite() {
     const spriteKey = `${currentState}-${currentDir}`;
     root.style.setProperty('--pet-sprite', `url("${spriteUrls[spriteKey]}")`);
@@ -99,15 +109,13 @@ function setupRuntimeListener() {
         setDraggingState(false);
     });
 
-    window.runtime.EventsOn('updatePetSettings', (data) => {
-        if (typeof data?.width === 'number' && Number.isFinite(data.width)) {
-            root.style.setProperty('--pet-width', `${data.width}px`);
-        }
+    window.runtime.EventsOn('updatePetSettings', applyPetSettings);
 
-        if (typeof data?.height === 'number' && Number.isFinite(data.height)) {
-            root.style.setProperty('--pet-height', `${data.height}px`);
-        }
-    });
+    if (window.go?.main?.App?.GetPetSettings) {
+        window.go.main.App.GetPetSettings()
+            .then(applyPetSettings)
+            .catch(() => {});
+    }
 }
 
 window.showPet = () => pet.classList.remove('hidden');
