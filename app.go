@@ -113,9 +113,9 @@ func (a *App) startup(ctx context.Context) {
 	tray, err := newTrayController(a)
 	if err != nil {
 		log.Printf("tray startup failed: %v", err)
-		return
+	} else {
+		a.setTray(tray)
 	}
-	a.tray = tray
 }
 
 func (a *App) loadConfig() *Config {
@@ -337,9 +337,8 @@ func (a *App) completeDrag(seq uint64, x int, y int) {
 
 func (a *App) onBeforeClose(ctx context.Context) bool {
 	a.saveConfig()
-	if a.tray != nil {
-		a.tray.Destroy()
-		a.tray = nil
+	if tray := a.takeTray(); tray != nil {
+		tray.Destroy()
 	}
 	return false
 }
@@ -565,20 +564,39 @@ func (a *App) resumeMovementIfVisible() {
 }
 
 func (a *App) refreshTrayMenu() {
-	if a.tray != nil {
-		a.tray.Refresh()
+	if tray := a.currentTray(); tray != nil {
+		tray.Refresh()
 	}
 }
 
 func (a *App) Quit() {
 	a.saveConfig()
-	if a.tray != nil {
-		a.tray.Destroy()
-		a.tray = nil
+	if tray := a.takeTray(); tray != nil {
+		tray.Destroy()
 	}
 	if a.ctx != nil {
 		runtime.Quit(a.ctx)
 	}
+}
+
+func (a *App) currentTray() *trayController {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.tray
+}
+
+func (a *App) setTray(tray *trayController) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tray = tray
+}
+
+func (a *App) takeTray() *trayController {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	tray := a.tray
+	a.tray = nil
+	return tray
 }
 
 func (a *App) emitDragEnded() {

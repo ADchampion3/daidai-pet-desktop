@@ -117,6 +117,7 @@ var (
 	procDestroyMenu         = user32.NewProc("DestroyMenu")
 	procDestroyWindow       = user32.NewProc("DestroyWindow")
 	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
+	procEndMenu             = user32.NewProc("EndMenu")
 	procGetCursorPosUser32  = user32.NewProc("GetCursorPos")
 	procGetMessageW         = user32.NewProc("GetMessageW")
 	procGetModuleHandleW    = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleHandleW")
@@ -177,6 +178,7 @@ func (t *trayController) Destroy() {
 			t.destroyOnThread()
 			return
 		}
+		procEndMenu.Call()
 		if t.hwnd != 0 {
 			postMessage(t.hwnd, wmClose, 0, 0)
 		}
