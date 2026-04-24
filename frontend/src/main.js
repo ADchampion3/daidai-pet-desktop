@@ -17,6 +17,8 @@ const spriteUrls = {
 let currentDir = 'r';
 let currentState = 'stand';
 let isDragging = false;
+let runtimeListenersReady = false;
+let startupPetSettingsSynced = false;
 
 function applyPetSettings(data) {
     if (typeof data?.width === 'number' && Number.isFinite(data.width)) {
@@ -99,23 +101,38 @@ function setupRuntimeListener() {
         return;
     }
 
-    window.runtime.EventsOn('updatePositionState', (data) => {
-        currentState = data.state;
-        currentDir = data.dir;
-        updateSprite();
-    });
+    if (!runtimeListenersReady) {
+        window.runtime.EventsOn('updatePositionState', (data) => {
+            currentState = data.state;
+            currentDir = data.dir;
+            updateSprite();
+        });
 
-    window.runtime.EventsOn('dragEnded', () => {
-        setDraggingState(false);
-    });
+        window.runtime.EventsOn('dragEnded', () => {
+            setDraggingState(false);
+        });
 
-    window.runtime.EventsOn('updatePetSettings', applyPetSettings);
-
-    if (window.go?.main?.App?.GetPetSettings) {
-        window.go.main.App.GetPetSettings()
-            .then(applyPetSettings)
-            .catch(() => {});
+        window.runtime.EventsOn('updatePetSettings', applyPetSettings);
+        runtimeListenersReady = true;
     }
+
+    if (!window.go?.main?.App?.GetPetSettings) {
+        window.setTimeout(setupRuntimeListener, 100);
+        return;
+    }
+
+    if (startupPetSettingsSynced) {
+        return;
+    }
+
+    window.go.main.App.GetPetSettings()
+        .then((data) => {
+            applyPetSettings(data);
+            startupPetSettingsSynced = true;
+        })
+        .catch(() => {
+            window.setTimeout(setupRuntimeListener, 100);
+        });
 }
 
 window.showPet = () => pet.classList.remove('hidden');
