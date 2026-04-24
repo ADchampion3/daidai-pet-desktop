@@ -1,8 +1,8 @@
 package main
 
 const (
-	basePetWidth  = 100
-	basePetHeight = 153
+	basePetWidth  = 60
+	basePetHeight = 92
 )
 
 const (

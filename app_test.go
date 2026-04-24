@@ -154,10 +154,10 @@ func TestGetPetSettingsUsesConfiguredScale(t *testing.T) {
 
 	settings := app.GetPetSettings()
 
-	if settings["width"] != 150 {
+	if settings["width"] != 90 {
 		t.Fatalf("width = %d", settings["width"])
 	}
-	if settings["height"] != 229 {
+	if settings["height"] != 138 {
 		t.Fatalf("height = %d", settings["height"])
 	}
 	if settings["scalePercent"] != 150 {

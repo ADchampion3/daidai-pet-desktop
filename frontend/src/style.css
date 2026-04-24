@@ -1,6 +1,6 @@
 :root {
-    --pet-width: 100px;
-    --pet-height: 153px;
+    --pet-width: 60px;
+    --pet-height: 92px;
     --pet-sprite: url("./assets/stand_r.png");
 }
 

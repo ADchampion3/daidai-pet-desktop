@@ -48,10 +48,10 @@ func TestNormalizeConfigRejectsInvalidPresetValues(t *testing.T) {
 func TestPetSizeForScale(t *testing.T) {
 	w, h := petSizeForScale(120)
 
-	if w != 120 {
+	if w != 72 {
 		t.Fatalf("width = %d", w)
 	}
-	if h != 183 {
+	if h != 110 {
 		t.Fatalf("height = %d", h)
 	}
 }
