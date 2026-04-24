@@ -12,3 +12,19 @@ export function SetDragEnd() {
 export function SetDragStart() {
   return window['go']['main']['App']['SetDragStart']();
 }
+
+export function SetScalePercent(arg1) {
+  return window['go']['main']['App']['SetScalePercent'](arg1);
+}
+
+export function SetStepSize(arg1) {
+  return window['go']['main']['App']['SetStepSize'](arg1);
+}
+
+export function SetVisible(arg1) {
+  return window['go']['main']['App']['SetVisible'](arg1);
+}
+
+export function SetWalkIntervalMs(arg1) {
+  return window['go']['main']['App']['SetWalkIntervalMs'](arg1);
+}

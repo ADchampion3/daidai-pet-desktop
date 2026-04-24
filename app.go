@@ -103,10 +103,16 @@ func (a *App) startup(ctx context.Context) {
 	a.applyWindowSize()
 	a.moveWindow(x, y)
 
-	go func() {
-		time.Sleep(2 * time.Second)
-		a.movement.Start()
-	}()
+	if a.currentVisible() {
+		go func() {
+			time.Sleep(2 * time.Second)
+			if a.currentVisible() && a.movement != nil {
+				a.movement.Start()
+			}
+		}()
+	} else if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+	}
 }
 
 func (a *App) loadConfig() *Config {
@@ -203,14 +209,7 @@ func clampWindowPositionForSize(x, y int, width, height int) (int, int) {
 }
 
 func (a *App) petSize() (int, int) {
-	a.mu.RLock()
-	scalePercent := defaultScalePercent
-	if a.cfg != nil {
-		scalePercent = a.cfg.ScalePercent
-	}
-	a.mu.RUnlock()
-
-	return petSizeForScale(scalePercent)
+	return petSizeForScale(a.currentScalePercent())
 }
 
 func (a *App) clampWindowPosition(x, y int) (int, int) {
@@ -328,7 +327,7 @@ func (a *App) completeDrag(seq uint64, x int, y int) {
 	a.emitDragEnded()
 	a.saveConfig()
 
-	if a.movement != nil {
+	if a.movement != nil && a.currentVisible() {
 		a.movement.Resume()
 	}
 }
@@ -382,6 +381,171 @@ func (a *App) applyWindowSize() {
 	width, height := a.petSize()
 	runtime.WindowSetSize(a.ctx, width, height)
 	a.emitPetSettings()
+}
+
+func (a *App) SetVisible(visible bool) {
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.Visible = visible
+	a.mu.Unlock()
+
+	if visible {
+		a.showPet()
+	} else {
+		a.hidePet()
+	}
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) SetScalePercent(scalePercent int) {
+	if !containsPreset(scalePresets, scalePercent) {
+		return
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.ScalePercent = scalePercent
+	a.mu.Unlock()
+
+	a.applyWindowSize()
+	x, y := a.currentPosition()
+	x, y = a.clampWindowPosition(x, y)
+	a.setCurrentPosition(x, y)
+	a.updateMovementSettings()
+	if a.movement != nil {
+		a.movement.SetPosition(x, y)
+	}
+	a.moveWindow(x, y)
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) SetStepSize(stepSize int) {
+	if !containsPreset(stepSizePresets, stepSize) {
+		return
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.StepSize = stepSize
+	a.mu.Unlock()
+
+	a.updateMovementSettings()
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) SetWalkIntervalMs(walkIntervalMs int) {
+	if !containsPreset(walkIntervalPresets, walkIntervalMs) {
+		return
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.WalkIntervalMs = walkIntervalMs
+	a.mu.Unlock()
+
+	a.updateMovementSettings()
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) showPet() {
+	a.applyWindowSize()
+	x, y := a.currentPosition()
+	x, y = a.clampWindowPosition(x, y)
+	a.setCurrentPosition(x, y)
+	a.updateMovementSettings()
+	if a.movement != nil {
+		a.movement.SetPosition(x, y)
+	}
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+	}
+	a.moveWindow(x, y)
+	if a.movement != nil && !a.isDragActive() {
+		a.movement.Resume()
+	}
+}
+
+func (a *App) hidePet() {
+	if a.movement != nil {
+		a.movement.Stop()
+	}
+	if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+	}
+}
+
+func (a *App) currentStepSize() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultStepSize
+	}
+	return a.cfg.StepSize
+}
+
+func (a *App) currentScalePercent() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultScalePercent
+	}
+	return a.cfg.ScalePercent
+}
+
+func (a *App) currentWalkInterval() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return time.Duration(defaultWalkIntervalMs) * time.Millisecond
+	}
+	return time.Duration(a.cfg.WalkIntervalMs) * time.Millisecond
+}
+
+func (a *App) currentVisible() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultVisible
+	}
+	return a.cfg.Visible
+}
+
+func (a *App) movementBounds() (int, int) {
+	petW, _ := a.petSize()
+	screenX, _, screenW, _ := getVirtualScreenBounds()
+	maxX := screenX + screenW - petW
+	if maxX < screenX {
+		maxX = screenX
+	}
+	return screenX, maxX
+}
+
+func (a *App) updateMovementSettings() {
+	if a.movement == nil {
+		return
+	}
+
+	minX, maxX := a.movementBounds()
+	a.movement.UpdateSettings(a.currentStepSize(), a.currentWalkInterval(), minX, maxX)
+}
+
+func (a *App) refreshTrayMenu() {
 }
 
 func (a *App) emitDragEnded() {

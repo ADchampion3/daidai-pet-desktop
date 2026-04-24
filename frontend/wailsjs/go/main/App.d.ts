@@ -5,3 +5,11 @@ export function GetPetSettings():Promise<{[key: string]: number}>;
 export function SetDragEnd():Promise<void>;
 
 export function SetDragStart():Promise<void>;
+
+export function SetScalePercent(arg1:number):Promise<void>;
+
+export function SetStepSize(arg1:number):Promise<void>;
+
+export function SetVisible(arg1:boolean):Promise<void>;
+
+export function SetWalkIntervalMs(arg1:number):Promise<void>;
