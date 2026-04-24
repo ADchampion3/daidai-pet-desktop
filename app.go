@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	dragInterval = 8 * time.Millisecond
+	dragInterval         = 8 * time.Millisecond
+	startupMovementDelay = 2 * time.Second
 )
 
 const (
@@ -55,16 +56,18 @@ const (
 )
 
 type App struct {
-	ctx         context.Context
-	cfg         *Config
-	movement    *Movement
-	cfgPath     string
-	mu          sync.RWMutex
-	isDragging  bool
-	dragStop    chan struct{}
-	dragSeq     uint64
-	dragOffsetX int
-	dragOffsetY int
+	ctx                    context.Context
+	cfg                    *Config
+	movement               *Movement
+	cfgPath                string
+	mu                     sync.RWMutex
+	isDragging             bool
+	dragStop               chan struct{}
+	dragSeq                uint64
+	dragOffsetX            int
+	dragOffsetY            int
+	startupDelayTimer      *time.Timer
+	startupMovementStarted bool
 }
 
 type winPoint struct {
@@ -104,12 +107,7 @@ func (a *App) startup(ctx context.Context) {
 	a.moveWindow(x, y)
 
 	if a.currentVisible() {
-		go func() {
-			time.Sleep(2 * time.Second)
-			if a.currentVisible() && a.movement != nil {
-				a.movement.Start()
-			}
-		}()
+		a.resumeMovementForVisibleState()
 	} else if a.ctx != nil {
 		runtime.WindowHide(a.ctx)
 	}
@@ -327,8 +325,8 @@ func (a *App) completeDrag(seq uint64, x int, y int) {
 	a.emitDragEnded()
 	a.saveConfig()
 
-	if a.movement != nil && a.currentVisible() {
-		a.movement.Resume()
+	if a.currentVisible() {
+		a.resumeMovementForVisibleState()
 	}
 }
 
@@ -472,12 +470,11 @@ func (a *App) showPet() {
 		runtime.WindowShow(a.ctx)
 	}
 	a.moveWindow(x, y)
-	if a.movement != nil && !a.isDragActive() {
-		a.movement.Resume()
-	}
+	a.resumeMovementForVisibleState()
 }
 
 func (a *App) hidePet() {
+	a.cancelPendingStartupMovement()
 	if a.movement != nil {
 		a.movement.Stop()
 	}
@@ -543,6 +540,55 @@ func (a *App) updateMovementSettings() {
 
 	minX, maxX := a.movementBounds()
 	a.movement.UpdateSettings(a.currentStepSize(), a.currentWalkInterval(), minX, maxX)
+}
+
+func (a *App) resumeMovementForVisibleState() {
+	a.mu.Lock()
+	if a.movement == nil || a.isDragging || (a.cfg != nil && !a.cfg.Visible) {
+		a.mu.Unlock()
+		return
+	}
+
+	movement := a.movement
+	if !a.startupMovementStarted {
+		if a.startupDelayTimer != nil {
+			a.startupDelayTimer.Stop()
+		}
+		a.startupDelayTimer = time.AfterFunc(startupMovementDelay, func() {
+			a.mu.Lock()
+			if a.startupMovementStarted || a.movement == nil || a.isDragging || (a.cfg != nil && !a.cfg.Visible) {
+				a.startupDelayTimer = nil
+				a.mu.Unlock()
+				return
+			}
+			a.startupDelayTimer = nil
+			a.startupMovementStarted = true
+			movement := a.movement
+			a.mu.Unlock()
+			movement.Start()
+		})
+		a.mu.Unlock()
+		return
+	}
+
+	if a.startupDelayTimer != nil {
+		a.startupDelayTimer.Stop()
+		a.startupDelayTimer = nil
+	}
+	a.mu.Unlock()
+
+	movement.Resume()
+}
+
+func (a *App) cancelPendingStartupMovement() {
+	a.mu.Lock()
+	timer := a.startupDelayTimer
+	a.startupDelayTimer = nil
+	a.mu.Unlock()
+
+	if timer != nil {
+		timer.Stop()
+	}
 }
 
 func (a *App) refreshTrayMenu() {
