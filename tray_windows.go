@@ -177,6 +177,7 @@ func (t *trayController) Destroy() {
 			t.destroyOnThread()
 			return
 		}
+		t.removeTrayIcon()
 		if t.hwnd != 0 {
 			postMessage(t.hwnd, wmClose, 0, 0)
 		}
@@ -256,14 +257,21 @@ func (t *trayController) addTrayIcon() error {
 
 func (t *trayController) destroyOnThread() {
 	if t.hwnd != 0 {
-		nid := t.notifyIconData()
-		procShellNotifyIconW.Call(
-			uintptr(nimDelete),
-			uintptr(unsafe.Pointer(&nid)),
-		)
+		t.removeTrayIcon()
 		destroyWindow(t.hwnd)
 		t.hwnd = 0
 	}
+}
+
+func (t *trayController) removeTrayIcon() {
+	if t.hwnd == 0 {
+		return
+	}
+	nid := t.notifyIconData()
+	procShellNotifyIconW.Call(
+		uintptr(nimDelete),
+		uintptr(unsafe.Pointer(&nid)),
+	)
 }
 
 func (t *trayController) notifyIconData() notifyIconData {
