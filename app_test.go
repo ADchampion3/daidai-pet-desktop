@@ -47,39 +47,42 @@ func TestMovementBoundsUseScaledWidth(t *testing.T) {
 	}
 }
 
-func TestShowPetBeforeInitialMovementStartSchedulesDelayedStart(t *testing.T) {
+func TestResumeMovementIfVisibleResumesWhenVisibleAndNotDragging(t *testing.T) {
 	app := &App{
 		cfg:      newDefaultConfig(),
 		movement: NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
 	}
 
-	app.showPet()
-
-	app.mu.RLock()
-	timer := app.startupDelayTimer
-	started := app.startupMovementStarted
-	app.mu.RUnlock()
-
-	if started {
-		t.Fatal("startupMovementStarted = true")
-	}
-	if timer == nil {
-		t.Fatal("startupDelayTimer = nil")
-	}
-	if !timer.Stop() {
-		t.Fatal("startupDelayTimer could not be stopped")
-	}
+	app.resumeMovementIfVisible()
 
 	app.movement.mu.Lock()
-	running := app.movement.running
-	moveTimer := app.movement.moveTimer
-	app.movement.mu.Unlock()
+	defer app.movement.mu.Unlock()
 
-	if running {
+	if !app.movement.running {
+		t.Fatal("movement.running = false")
+	}
+	if app.movement.moveTimer == nil {
+		t.Fatal("movement.moveTimer = nil")
+	}
+}
+
+func TestResumeMovementIfVisibleDoesNotResumeWhileDragging(t *testing.T) {
+	app := &App{
+		cfg:        newDefaultConfig(),
+		movement:   NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+		isDragging: true,
+	}
+
+	app.resumeMovementIfVisible()
+
+	app.movement.mu.Lock()
+	defer app.movement.mu.Unlock()
+
+	if app.movement.running {
 		t.Fatal("movement.running = true")
 	}
-	if moveTimer != nil {
-		t.Fatal("movement.moveTimer should be nil before startup delay fires")
+	if app.movement.moveTimer != nil {
+		t.Fatal("movement.moveTimer should be nil while dragging")
 	}
 }
 
