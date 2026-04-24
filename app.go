@@ -59,6 +59,7 @@ type App struct {
 	cfg         *Config
 	movement    *Movement
 	cfgPath     string
+	tray        *trayController
 	mu          sync.RWMutex
 	isDragging  bool
 	dragStop    chan struct{}
@@ -108,6 +109,13 @@ func (a *App) startup(ctx context.Context) {
 	} else if a.ctx != nil {
 		runtime.WindowHide(a.ctx)
 	}
+
+	tray, err := newTrayController(a)
+	if err != nil {
+		log.Printf("tray startup failed: %v", err)
+		return
+	}
+	a.tray = tray
 }
 
 func (a *App) loadConfig() *Config {
@@ -329,6 +337,10 @@ func (a *App) completeDrag(seq uint64, x int, y int) {
 
 func (a *App) onBeforeClose(ctx context.Context) bool {
 	a.saveConfig()
+	if a.tray != nil {
+		a.tray.Destroy()
+		a.tray = nil
+	}
 	return false
 }
 
@@ -553,6 +565,20 @@ func (a *App) resumeMovementIfVisible() {
 }
 
 func (a *App) refreshTrayMenu() {
+	if a.tray != nil {
+		a.tray.Refresh()
+	}
+}
+
+func (a *App) Quit() {
+	a.saveConfig()
+	if a.tray != nil {
+		a.tray.Destroy()
+		a.tray = nil
+	}
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
 }
 
 func (a *App) emitDragEnded() {

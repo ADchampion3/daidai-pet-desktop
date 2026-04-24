@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -159,5 +162,68 @@ func TestGetPetSettingsUsesConfiguredScale(t *testing.T) {
 	}
 	if settings["scalePercent"] != 150 {
 		t.Fatalf("scalePercent = %d", settings["scalePercent"])
+	}
+}
+
+func TestRefreshTrayMenuCallsTrayRefresh(t *testing.T) {
+	refreshed := 0
+	app := &App{
+		tray: &trayController{
+			refreshFunc: func() {
+				refreshed++
+			},
+		},
+	}
+
+	app.refreshTrayMenu()
+
+	if refreshed != 1 {
+		t.Fatalf("refresh count = %d", refreshed)
+	}
+}
+
+func TestOnBeforeCloseDestroysTray(t *testing.T) {
+	destroyed := 0
+	app := &App{
+		cfg:     newDefaultConfig(),
+		cfgPath: filepath.Join(t.TempDir(), "config.json"),
+		tray: &trayController{
+			destroyFunc: func() {
+				destroyed++
+			},
+		},
+	}
+
+	if got := app.onBeforeClose(context.Background()); got {
+		t.Fatal("onBeforeClose() = true")
+	}
+
+	if destroyed != 1 {
+		t.Fatalf("destroy count = %d", destroyed)
+	}
+}
+
+func TestQuitSavesConfigAndDestroysTray(t *testing.T) {
+	tempDir := t.TempDir()
+	cfgPath := filepath.Join(tempDir, "config.json")
+	destroyed := 0
+	app := &App{
+		cfg:     newDefaultConfig(),
+		cfgPath: cfgPath,
+		tray: &trayController{
+			destroyFunc: func() {
+				destroyed++
+			},
+		},
+	}
+	app.cfg.Visible = false
+
+	app.Quit()
+
+	if destroyed != 1 {
+		t.Fatalf("destroy count = %d", destroyed)
+	}
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Fatalf("config not written: %v", err)
 	}
 }
