@@ -17,19 +17,35 @@ const spriteUrls = {
 let currentDir = 'r';
 let currentState = 'stand';
 let isDragging = false;
+let dragEnabled = true;
 
 function updateSprite() {
     const spriteKey = `${currentState}-${currentDir}`;
     root.style.setProperty('--pet-sprite', `url("${spriteUrls[spriteKey]}")`);
-    pet.className = spriteKey;
+    pet.classList.remove('stand-l', 'stand-r', 'walk-l', 'walk-r');
+    pet.classList.add(spriteKey);
 }
 
 function setDraggingState(active) {
-    isDragging = active;
-    pet.style.cursor = active ? 'grabbing' : 'move';
+    isDragging = dragEnabled && active;
+    pet.style.cursor = dragEnabled ? (isDragging ? 'grabbing' : 'move') : 'default';
+}
+
+function setDragEnabled(enabled) {
+    dragEnabled = Boolean(enabled);
+    pet.classList.toggle('drag-disabled', !dragEnabled);
+    if (!dragEnabled) {
+        setDraggingState(false);
+        return;
+    }
+    pet.style.cursor = 'move';
 }
 
 function startDrag() {
+    if (!dragEnabled) {
+        return;
+    }
+
     setDraggingState(true);
 
     if (window.go?.main?.App) {
@@ -50,6 +66,10 @@ function endDrag() {
 }
 
 function onMouseDown(event) {
+    if (!dragEnabled) {
+        return;
+    }
+
     if (event.button !== 0) {
         return;
     }
@@ -67,6 +87,10 @@ function onMouseMove(event) {
 }
 
 function onTouchStart(event) {
+    if (!dragEnabled) {
+        return;
+    }
+
     if (event.touches.length !== 1) {
         return;
     }
@@ -97,6 +121,10 @@ function setupRuntimeListener() {
 
     window.runtime.EventsOn('dragEnded', () => {
         setDraggingState(false);
+    });
+
+    window.runtime.EventsOn('updateDragState', (data) => {
+        setDragEnabled(data.enabled);
     });
 }
 

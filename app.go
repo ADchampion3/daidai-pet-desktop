@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	petWidth  = 100
-	petHeight = 153
+	petWidth  = 60
+	petHeight = 92
 )
 
 const (
@@ -43,7 +43,8 @@ var (
 )
 
 type Config struct {
-	Position Position `json:"position"`
+	Position    Position `json:"position"`
+	DragEnabled bool     `json:"dragEnabled"`
 }
 
 type Position struct {
@@ -69,6 +70,7 @@ type App struct {
 	dragSeq     uint64
 	dragOffsetX int
 	dragOffsetY int
+	tray        *trayMenu
 }
 
 type winPoint struct {
@@ -245,6 +247,13 @@ func NewApp() *App {
 	return &App{}
 }
 
+func newDefaultConfig() *Config {
+	return &Config{
+		Position:    Position{X: 100, Y: 100},
+		DragEnabled: true,
+	}
+}
+
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.cfg = a.loadConfig()
@@ -267,6 +276,17 @@ func (a *App) startup(ctx context.Context) {
 
 	a.setCurrentPosition(a.cfg.Position.X, a.cfg.Position.Y)
 	a.moveWindow(a.cfg.Position.X, a.cfg.Position.Y)
+	if err := setWindowClickThrough(a.ctx, !a.dragEnabled()); err != nil {
+		log.Printf("startup: failed to apply click-through state: %v", err)
+	}
+	a.emitDragState()
+
+	tray, err := newTrayMenu(a)
+	if err != nil {
+		log.Printf("startup: failed to create tray menu: %v", err)
+	} else {
+		a.tray = tray
+	}
 
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -275,7 +295,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) loadConfig() *Config {
-	cfg := &Config{Position: Position{X: 100, Y: 100}}
+	cfg := newDefaultConfig()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return cfg
@@ -360,6 +380,10 @@ func clampWindowPosition(x, y int) (int, int) {
 }
 
 func (a *App) SetDragStart() {
+	if !a.dragEnabled() {
+		return
+	}
+
 	cursorX, cursorY, ok := getCursorPosition()
 	if !ok {
 		log.Println("SetDragStart: cannot read cursor position")
@@ -476,6 +500,9 @@ func (a *App) completeDrag(seq uint64, x int, y int) {
 
 func (a *App) onBeforeClose(ctx context.Context) bool {
 	a.saveConfig()
+	if a.tray != nil {
+		a.tray.Dispose()
+	}
 	return false
 }
 
@@ -494,10 +521,66 @@ func (a *App) setCurrentPosition(x, y int) {
 	defer a.mu.Unlock()
 
 	if a.cfg == nil {
-		a.cfg = &Config{}
+		a.cfg = newDefaultConfig()
 	}
 	a.cfg.Position.X = x
 	a.cfg.Position.Y = y
+}
+
+func (a *App) dragEnabled() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return true
+	}
+	return a.cfg.DragEnabled
+}
+
+func (a *App) SetDragEnabled(enabled bool) {
+	if !enabled {
+		a.stopActiveDrag()
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.DragEnabled = enabled
+	a.mu.Unlock()
+
+	if err := setWindowClickThrough(a.ctx, !enabled); err != nil {
+		log.Printf("SetDragEnabled: failed to update click-through state: %v", err)
+	}
+
+	a.saveConfig()
+	a.emitDragState()
+}
+
+func (a *App) ToggleDragEnabled() {
+	a.SetDragEnabled(!a.dragEnabled())
+}
+
+func (a *App) stopActiveDrag() {
+	a.mu.Lock()
+	if !a.isDragging {
+		a.mu.Unlock()
+		return
+	}
+	stop := a.dragStop
+	a.dragStop = nil
+	a.isDragging = false
+	a.dragSeq++
+	a.mu.Unlock()
+
+	if stop != nil {
+		close(stop)
+	}
+
+	a.emitDragEnded()
+	if a.movement != nil {
+		a.movement.Resume()
+	}
 }
 
 func (a *App) isDragActive() bool {
@@ -521,6 +604,16 @@ func (a *App) emitDragEnded() {
 	}
 
 	runtime.EventsEmit(a.ctx, "dragEnded")
+}
+
+func (a *App) emitDragState() {
+	if a.ctx == nil {
+		return
+	}
+
+	runtime.EventsEmit(a.ctx, "updateDragState", map[string]interface{}{
+		"enabled": a.dragEnabled(),
+	})
 }
 
 func (a *App) emitAnimationState(direction Direction, walking bool) {

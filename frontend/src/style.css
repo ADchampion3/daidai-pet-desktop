@@ -22,12 +22,16 @@ body {
 }
 
 #pet {
-    width: 100px;
-    height: 153px;
+    width: 60px;
+    height: 92px;
     position: absolute;
     top: 0;
     left: 0;
     cursor: move;
+}
+
+#pet.drag-disabled {
+    cursor: default;
 }
 
 #sprite {
