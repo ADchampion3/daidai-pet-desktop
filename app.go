@@ -16,15 +16,7 @@ import (
 )
 
 const (
-	petWidth  = 60
-	petHeight = 92
-)
-
-const (
-	moveInterval  = 150 * time.Millisecond
-	standDuration = 300 * time.Millisecond
-	dragInterval  = 8 * time.Millisecond
-	stepSize      = 20
+	dragInterval = 8 * time.Millisecond
 )
 
 const (
@@ -43,8 +35,11 @@ var (
 )
 
 type Config struct {
-	Position    Position `json:"position"`
-	DragEnabled bool     `json:"dragEnabled"`
+	Position       Position `json:"position"`
+	Visible        bool     `json:"visible"`
+	ScalePercent   int      `json:"scalePercent"`
+	StepSize       int      `json:"stepSize"`
+	WalkIntervalMs int      `json:"walkIntervalMs"`
 }
 
 type Position struct {
@@ -64,13 +59,13 @@ type App struct {
 	cfg         *Config
 	movement    *Movement
 	cfgPath     string
+	tray        *trayController
 	mu          sync.RWMutex
 	isDragging  bool
 	dragStop    chan struct{}
 	dragSeq     uint64
 	dragOffsetX int
 	dragOffsetY int
-	tray        *trayMenu
 }
 
 type winPoint struct {
@@ -78,192 +73,24 @@ type winPoint struct {
 	Y int32
 }
 
-type Movement struct {
-	mu        sync.Mutex
-	x, y      int
-	direction Direction
-	minX      int
-	maxX      int
-	moveTimer *time.Timer
-	onUpdate  func(x, y int, direction Direction, walking bool)
-	running   bool
-}
-
-func NewMovement(x, y, minX, maxX int) *Movement {
-	m := &Movement{
-		x:         x,
-		y:         y,
-		direction: Right,
-		minX:      minX,
-		maxX:      maxX,
-	}
-	if rand.Intn(2) == 0 {
-		m.direction = Left
-	}
-	return m
-}
-
-func (m *Movement) SetCallback(cb func(x, y int, direction Direction, walking bool)) {
-	m.onUpdate = cb
-}
-
-func (m *Movement) Start() {
-	m.mu.Lock()
-	m.running = true
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-		m.moveTimer = nil
-	}
-	m.mu.Unlock()
-
-	m.doMove()
-}
-
-func (m *Movement) Resume() {
-	m.mu.Lock()
-	m.running = true
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-		m.moveTimer = nil
-	}
-	m.mu.Unlock()
-
-	m.scheduleNextWalk()
-}
-
-func (m *Movement) Stop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.running = false
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-		m.moveTimer = nil
-	}
-}
-
-func (m *Movement) SetPosition(x, y int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.x = x
-	m.y = y
-}
-
-func (m *Movement) doMove() {
-	m.mu.Lock()
-	if !m.running {
-		m.mu.Unlock()
-		return
-	}
-
-	if m.direction == Right {
-		m.x += stepSize
-	} else {
-		m.x -= stepSize
-	}
-
-	bounced := false
-	if m.x < m.minX {
-		m.x = m.minX
-		m.direction = Right
-		bounced = true
-	} else if m.x > m.maxX {
-		m.x = m.maxX
-		m.direction = Left
-		bounced = true
-	}
-
-	m.notifyUpdateLocked(true)
-	m.mu.Unlock()
-
-	if bounced {
-		m.scheduleBounce()
-		return
-	}
-
-	m.scheduleStand()
-}
-
-func (m *Movement) scheduleStand() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.running {
-		return
-	}
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-	}
-	m.moveTimer = time.AfterFunc(standDuration, m.doStand)
-}
-
-func (m *Movement) doStand() {
-	m.mu.Lock()
-	if !m.running {
-		m.mu.Unlock()
-		return
-	}
-	m.notifyUpdateLocked(false)
-	m.mu.Unlock()
-
-	m.scheduleNextWalk()
-}
-
-func (m *Movement) scheduleNextWalk() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.running {
-		return
-	}
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-	}
-	m.moveTimer = time.AfterFunc(moveInterval, m.doMove)
-}
-
-func (m *Movement) scheduleBounce() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.running {
-		return
-	}
-	if m.moveTimer != nil {
-		m.moveTimer.Stop()
-	}
-	m.moveTimer = time.AfterFunc(standDuration, m.doStand)
-}
-
-func (m *Movement) notifyUpdateLocked(walking bool) {
-	if m.onUpdate != nil {
-		m.onUpdate(m.x, m.y, m.direction, walking)
-	}
-}
-
 func NewApp() *App {
 	rand.Seed(time.Now().UnixNano())
 	return &App{}
-}
-
-func newDefaultConfig() *Config {
-	return &Config{
-		Position:    Position{X: 100, Y: 100},
-		DragEnabled: true,
-	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.cfg = a.loadConfig()
 
+	width, height := a.petSize()
 	screenX, _, screenW, _ := getVirtualScreenBounds()
 	minX := screenX
-	maxX := screenX + screenW - petWidth
+	maxX := screenX + screenW - width
+	x, y := clampWindowPositionForSize(a.cfg.Position.X, a.cfg.Position.Y, width, height)
+	a.setCurrentPosition(x, y)
 
-	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", a.cfg.Position.X, a.cfg.Position.Y, minX, maxX)
-	a.movement = NewMovement(a.cfg.Position.X, a.cfg.Position.Y, minX, maxX)
+	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", x, y, minX, maxX)
+	a.movement = NewMovement(x, y, minX, maxX, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
 	a.movement.SetCallback(func(x, y int, direction Direction, walking bool) {
 		if a.isDragActive() {
 			return
@@ -274,24 +101,21 @@ func (a *App) startup(ctx context.Context) {
 		a.emitAnimationState(direction, walking)
 	})
 
-	a.setCurrentPosition(a.cfg.Position.X, a.cfg.Position.Y)
-	a.moveWindow(a.cfg.Position.X, a.cfg.Position.Y)
-	if err := setWindowClickThrough(a.ctx, !a.dragEnabled()); err != nil {
-		log.Printf("startup: failed to apply click-through state: %v", err)
-	}
-	a.emitDragState()
+	a.applyWindowSize()
+	a.moveWindow(x, y)
 
-	tray, err := newTrayMenu(a)
+	if a.currentVisible() {
+		a.resumeMovementIfVisible()
+	} else if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+	}
+
+	tray, err := newTrayController(a)
 	if err != nil {
-		log.Printf("startup: failed to create tray menu: %v", err)
+		log.Printf("tray startup failed: %v", err)
 	} else {
-		a.tray = tray
+		a.setTray(tray)
 	}
-
-	go func() {
-		time.Sleep(2 * time.Second)
-		a.movement.Start()
-	}()
 }
 
 func (a *App) loadConfig() *Config {
@@ -308,6 +132,7 @@ func (a *App) loadConfig() *Config {
 	if len(data) > 0 {
 		_ = json.Unmarshal(data, cfg)
 	}
+	NormalizeConfig(cfg)
 	return cfg
 }
 
@@ -359,10 +184,17 @@ func getVirtualScreenBounds() (int, int, int, int) {
 	return int(int32(x)), int(int32(y)), int(w), int(h)
 }
 
-func clampWindowPosition(x, y int) (int, int) {
+func clampWindowPositionForSize(x, y int, width, height int) (int, int) {
 	screenX, screenY, screenW, screenH := getVirtualScreenBounds()
-	maxX := screenX + screenW - petWidth
-	maxY := screenY + screenH - petHeight
+	maxX := screenX + screenW - width
+	maxY := screenY + screenH - height
+
+	if maxX < screenX {
+		maxX = screenX
+	}
+	if maxY < screenY {
+		maxY = screenY
+	}
 
 	if x < screenX {
 		x = screenX
@@ -379,11 +211,16 @@ func clampWindowPosition(x, y int) (int, int) {
 	return x, y
 }
 
-func (a *App) SetDragStart() {
-	if !a.dragEnabled() {
-		return
-	}
+func (a *App) petSize() (int, int) {
+	return petSizeForScale(a.currentScalePercent())
+}
 
+func (a *App) clampWindowPosition(x, y int) (int, int) {
+	width, height := a.petSize()
+	return clampWindowPositionForSize(x, y, width, height)
+}
+
+func (a *App) SetDragStart() {
 	cursorX, cursorY, ok := getCursorPosition()
 	if !ok {
 		log.Println("SetDragStart: cannot read cursor position")
@@ -441,7 +278,7 @@ func (a *App) runDragLoop(seq uint64, stop <-chan struct{}) {
 			offsetY := a.dragOffsetY
 			a.mu.RUnlock()
 
-			x, y := clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
+			x, y := a.clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
 			a.setCurrentPosition(x, y)
 			a.moveWindow(x, y)
 		}
@@ -464,7 +301,7 @@ func (a *App) completeDragFromCursor() {
 	offsetY := a.dragOffsetY
 	a.mu.RUnlock()
 
-	x, y := clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
+	x, y := a.clampWindowPosition(cursorX-offsetX, cursorY-offsetY)
 	a.completeDrag(seq, x, y)
 }
 
@@ -493,15 +330,15 @@ func (a *App) completeDrag(seq uint64, x int, y int) {
 	a.emitDragEnded()
 	a.saveConfig()
 
-	if a.movement != nil {
-		a.movement.Resume()
+	if a.currentVisible() {
+		a.resumeMovementIfVisible()
 	}
 }
 
 func (a *App) onBeforeClose(ctx context.Context) bool {
 	a.saveConfig()
-	if a.tray != nil {
-		a.tray.Dispose()
+	if tray := a.takeTray(); tray != nil {
+		tray.Destroy()
 	}
 	return false
 }
@@ -527,62 +364,6 @@ func (a *App) setCurrentPosition(x, y int) {
 	a.cfg.Position.Y = y
 }
 
-func (a *App) dragEnabled() bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	if a.cfg == nil {
-		return true
-	}
-	return a.cfg.DragEnabled
-}
-
-func (a *App) SetDragEnabled(enabled bool) {
-	if !enabled {
-		a.stopActiveDrag()
-	}
-
-	a.mu.Lock()
-	if a.cfg == nil {
-		a.cfg = newDefaultConfig()
-	}
-	a.cfg.DragEnabled = enabled
-	a.mu.Unlock()
-
-	if err := setWindowClickThrough(a.ctx, !enabled); err != nil {
-		log.Printf("SetDragEnabled: failed to update click-through state: %v", err)
-	}
-
-	a.saveConfig()
-	a.emitDragState()
-}
-
-func (a *App) ToggleDragEnabled() {
-	a.SetDragEnabled(!a.dragEnabled())
-}
-
-func (a *App) stopActiveDrag() {
-	a.mu.Lock()
-	if !a.isDragging {
-		a.mu.Unlock()
-		return
-	}
-	stop := a.dragStop
-	a.dragStop = nil
-	a.isDragging = false
-	a.dragSeq++
-	a.mu.Unlock()
-
-	if stop != nil {
-		close(stop)
-	}
-
-	a.emitDragEnded()
-	if a.movement != nil {
-		a.movement.Resume()
-	}
-}
-
 func (a *App) isDragActive() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -598,22 +379,232 @@ func (a *App) moveWindow(x, y int) {
 	runtime.WindowSetPosition(a.ctx, x, y)
 }
 
+func (a *App) applyWindowSize() {
+	if a.ctx == nil {
+		return
+	}
+
+	width, height := a.petSize()
+	runtime.WindowSetSize(a.ctx, width, height)
+	a.emitPetSettings()
+}
+
+func (a *App) SetVisible(visible bool) {
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.Visible = visible
+	a.mu.Unlock()
+
+	if visible {
+		a.showPet()
+	} else {
+		a.hidePet()
+	}
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) SetScalePercent(scalePercent int) {
+	if !containsPreset(scalePresets, scalePercent) {
+		return
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.ScalePercent = scalePercent
+	a.mu.Unlock()
+
+	a.applyWindowSize()
+	x, y := a.currentPosition()
+	x, y = a.clampWindowPosition(x, y)
+	a.setCurrentPosition(x, y)
+	a.updateMovementSettings()
+	if a.movement != nil {
+		a.movement.SetPosition(x, y)
+	}
+	a.moveWindow(x, y)
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) SetStepSize(stepSize int) {
+	if !containsPreset(stepSizePresets, stepSize) {
+		return
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.StepSize = stepSize
+	a.mu.Unlock()
+
+	a.updateMovementSettings()
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) SetWalkIntervalMs(walkIntervalMs int) {
+	if !containsPreset(walkIntervalPresets, walkIntervalMs) {
+		return
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.WalkIntervalMs = walkIntervalMs
+	a.mu.Unlock()
+
+	a.updateMovementSettings()
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
+func (a *App) showPet() {
+	a.applyWindowSize()
+	x, y := a.currentPosition()
+	x, y = a.clampWindowPosition(x, y)
+	a.setCurrentPosition(x, y)
+	a.updateMovementSettings()
+	if a.movement != nil {
+		a.movement.SetPosition(x, y)
+	}
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+	}
+	a.moveWindow(x, y)
+	a.resumeMovementIfVisible()
+}
+
+func (a *App) hidePet() {
+	if a.movement != nil {
+		a.movement.Stop()
+	}
+	if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+	}
+}
+
+func (a *App) currentStepSize() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultStepSize
+	}
+	return a.cfg.StepSize
+}
+
+func (a *App) currentScalePercent() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultScalePercent
+	}
+	return a.cfg.ScalePercent
+}
+
+func (a *App) currentWalkInterval() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return time.Duration(defaultWalkIntervalMs) * time.Millisecond
+	}
+	return time.Duration(a.cfg.WalkIntervalMs) * time.Millisecond
+}
+
+func (a *App) currentVisible() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultVisible
+	}
+	return a.cfg.Visible
+}
+
+func (a *App) movementBounds() (int, int) {
+	petW, _ := a.petSize()
+	screenX, _, screenW, _ := getVirtualScreenBounds()
+	maxX := screenX + screenW - petW
+	if maxX < screenX {
+		maxX = screenX
+	}
+	return screenX, maxX
+}
+
+func (a *App) updateMovementSettings() {
+	if a.movement == nil {
+		return
+	}
+
+	minX, maxX := a.movementBounds()
+	a.movement.UpdateSettings(a.currentStepSize(), a.currentWalkInterval(), minX, maxX)
+}
+
+func (a *App) resumeMovementIfVisible() {
+	a.mu.RLock()
+	movement := a.movement
+	visible := a.cfg == nil || a.cfg.Visible
+	dragging := a.isDragging
+	a.mu.RUnlock()
+
+	if movement == nil || !visible || dragging {
+		return
+	}
+
+	movement.Resume()
+}
+
+func (a *App) refreshTrayMenu() {
+	if tray := a.currentTray(); tray != nil {
+		tray.Refresh()
+	}
+}
+
+func (a *App) Quit() {
+	a.saveConfig()
+	if tray := a.takeTray(); tray != nil {
+		tray.Destroy()
+	}
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
+}
+
+func (a *App) currentTray() *trayController {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.tray
+}
+
+func (a *App) setTray(tray *trayController) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tray = tray
+}
+
+func (a *App) takeTray() *trayController {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	tray := a.tray
+	a.tray = nil
+	return tray
+}
+
 func (a *App) emitDragEnded() {
 	if a.ctx == nil {
 		return
 	}
 
 	runtime.EventsEmit(a.ctx, "dragEnded")
-}
-
-func (a *App) emitDragState() {
-	if a.ctx == nil {
-		return
-	}
-
-	runtime.EventsEmit(a.ctx, "updateDragState", map[string]interface{}{
-		"enabled": a.dragEnabled(),
-	})
 }
 
 func (a *App) emitAnimationState(direction Direction, walking bool) {
@@ -635,4 +626,28 @@ func (a *App) emitAnimationState(direction Direction, walking bool) {
 		"state": stateStr,
 		"dir":   dirStr,
 	})
+}
+
+func (a *App) GetPetSettings() map[string]int {
+	width, height := a.petSize()
+	a.mu.RLock()
+	scalePercent := defaultScalePercent
+	if a.cfg != nil {
+		scalePercent = a.cfg.ScalePercent
+	}
+	a.mu.RUnlock()
+
+	return map[string]int{
+		"width":        width,
+		"height":       height,
+		"scalePercent": scalePercent,
+	}
+}
+
+func (a *App) emitPetSettings() {
+	if a.ctx == nil {
+		return
+	}
+
+	runtime.EventsEmit(a.ctx, "updatePetSettings", a.GetPetSettings())
 }

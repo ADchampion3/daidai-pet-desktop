@@ -18,8 +18,8 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:            "Pet",
-		Width:            petWidth,
-		Height:           petHeight,
+		Width:            basePetWidth,
+		Height:           basePetHeight,
 		Frameless:        true,
 		AlwaysOnTop:      true,
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},

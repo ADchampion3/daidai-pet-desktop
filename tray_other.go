@@ -2,17 +2,23 @@
 
 package main
 
-type trayMenu struct{}
-
-func newTrayMenu(app *App) (*trayMenu, error) {
-	return &trayMenu{}, nil
+type trayController struct {
+	refreshFunc func()
+	destroyFunc func()
 }
 
-func (t *trayMenu) Dispose() {}
+func newTrayController(app *App) (*trayController, error) {
+	return &trayController{}, nil
+}
 
-func trayDragLabel(enabled bool) string {
-	if enabled {
-		return "Disable Drag"
+func (t *trayController) Refresh() {
+	if t != nil && t.refreshFunc != nil {
+		t.refreshFunc()
 	}
-	return "Enable Drag"
+}
+
+func (t *trayController) Destroy() {
+	if t != nil && t.destroyFunc != nil {
+		t.destroyFunc()
+	}
 }

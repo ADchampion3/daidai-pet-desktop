@@ -17,35 +17,31 @@ const spriteUrls = {
 let currentDir = 'r';
 let currentState = 'stand';
 let isDragging = false;
-let dragEnabled = true;
+let runtimeListenersReady = false;
+let startupPetSettingsSynced = false;
+
+function applyPetSettings(data) {
+    if (typeof data?.width === 'number' && Number.isFinite(data.width)) {
+        root.style.setProperty('--pet-width', `${data.width}px`);
+    }
+
+    if (typeof data?.height === 'number' && Number.isFinite(data.height)) {
+        root.style.setProperty('--pet-height', `${data.height}px`);
+    }
+}
 
 function updateSprite() {
     const spriteKey = `${currentState}-${currentDir}`;
     root.style.setProperty('--pet-sprite', `url("${spriteUrls[spriteKey]}")`);
-    pet.classList.remove('stand-l', 'stand-r', 'walk-l', 'walk-r');
-    pet.classList.add(spriteKey);
+    pet.className = spriteKey;
 }
 
 function setDraggingState(active) {
-    isDragging = dragEnabled && active;
-    pet.style.cursor = dragEnabled ? (isDragging ? 'grabbing' : 'move') : 'default';
-}
-
-function setDragEnabled(enabled) {
-    dragEnabled = Boolean(enabled);
-    pet.classList.toggle('drag-disabled', !dragEnabled);
-    if (!dragEnabled) {
-        setDraggingState(false);
-        return;
-    }
-    pet.style.cursor = 'move';
+    isDragging = active;
+    pet.style.cursor = active ? 'grabbing' : 'move';
 }
 
 function startDrag() {
-    if (!dragEnabled) {
-        return;
-    }
-
     setDraggingState(true);
 
     if (window.go?.main?.App) {
@@ -66,10 +62,6 @@ function endDrag() {
 }
 
 function onMouseDown(event) {
-    if (!dragEnabled) {
-        return;
-    }
-
     if (event.button !== 0) {
         return;
     }
@@ -87,10 +79,6 @@ function onMouseMove(event) {
 }
 
 function onTouchStart(event) {
-    if (!dragEnabled) {
-        return;
-    }
-
     if (event.touches.length !== 1) {
         return;
     }
@@ -113,19 +101,38 @@ function setupRuntimeListener() {
         return;
     }
 
-    window.runtime.EventsOn('updatePositionState', (data) => {
-        currentState = data.state;
-        currentDir = data.dir;
-        updateSprite();
-    });
+    if (!runtimeListenersReady) {
+        window.runtime.EventsOn('updatePositionState', (data) => {
+            currentState = data.state;
+            currentDir = data.dir;
+            updateSprite();
+        });
 
-    window.runtime.EventsOn('dragEnded', () => {
-        setDraggingState(false);
-    });
+        window.runtime.EventsOn('dragEnded', () => {
+            setDraggingState(false);
+        });
 
-    window.runtime.EventsOn('updateDragState', (data) => {
-        setDragEnabled(data.enabled);
-    });
+        window.runtime.EventsOn('updatePetSettings', applyPetSettings);
+        runtimeListenersReady = true;
+    }
+
+    if (!window.go?.main?.App?.GetPetSettings) {
+        window.setTimeout(setupRuntimeListener, 100);
+        return;
+    }
+
+    if (startupPetSettingsSynced) {
+        return;
+    }
+
+    window.go.main.App.GetPetSettings()
+        .then((data) => {
+            applyPetSettings(data);
+            startupPetSettingsSynced = true;
+        })
+        .catch(() => {
+            window.setTimeout(setupRuntimeListener, 100);
+        });
 }
 
 window.showPet = () => pet.classList.remove('hidden');
