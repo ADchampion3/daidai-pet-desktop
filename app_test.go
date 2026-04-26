@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -260,5 +261,40 @@ func TestQuitSavesConfigAndDestroysTray(t *testing.T) {
 	}
 	if _, err := os.Stat(cfgPath); err != nil {
 		t.Fatalf("config not written: %v", err)
+	}
+}
+
+func TestSaveConfigWritesNonEmptyJSON(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	app := &App{
+		cfg:     newDefaultConfig(),
+		cfgPath: cfgPath,
+	}
+	app.cfg.Position = Position{X: 4688, Y: 85}
+	app.cfg.DragEnabled = false
+
+	app.saveConfig()
+
+	info, err := os.Stat(cfgPath)
+	if err != nil {
+		t.Fatalf("config not written: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatal("config file is empty")
+	}
+
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if cfg.Position.X != 4688 || cfg.Position.Y != 85 {
+		t.Fatalf("position = %+v", cfg.Position)
+	}
+	if cfg.DragEnabled {
+		t.Fatal("dragEnabled = true")
 	}
 }

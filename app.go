@@ -164,7 +164,18 @@ func (a *App) saveConfig() {
 		return
 	}
 
-	_ = os.WriteFile(path, content, 0644)
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, content, 0644); err != nil {
+		log.Printf("saveConfig: write temp config failed: %v", err)
+		return
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(path)
+		if renameErr := os.Rename(tmpPath, path); renameErr != nil {
+			log.Printf("saveConfig: replace config failed: %v", renameErr)
+			_ = os.Remove(tmpPath)
+		}
+	}
 }
 
 func getCursorPosition() (int, int, bool) {
