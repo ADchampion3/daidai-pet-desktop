@@ -14,6 +14,9 @@ func TestNormalizeConfigAddsDefaults(t *testing.T) {
 	if !cfg.Visible {
 		t.Fatal("expected visible default true")
 	}
+	if !cfg.DragEnabled {
+		t.Fatal("expected drag enabled default true")
+	}
 	if cfg.ScalePercent != defaultScalePercent {
 		t.Fatalf("scale = %d", cfg.ScalePercent)
 	}

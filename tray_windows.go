@@ -13,40 +13,41 @@ import (
 )
 
 const (
-	wmApp               = 0x8000
-	wmCommand           = 0x0111
-	wmClose             = 0x0010
-	wmDestroy           = 0x0002
-	wmNull              = 0x0000
-	wmRButtonUp         = 0x0205
-	wmLButtonDblClk     = 0x0203
-	csHRedraw           = 0x0002
-	csVRedraw           = 0x0001
-	cwUseDefault        = 0x80000000
-	idiApplication      = 32512
-	idcArrow            = 32512
-	imageIcon           = 1
-	lrDefaultSize       = 0x0040
-	lrShared            = 0x8000
-	nifMessage          = 0x00000001
-	nifIcon             = 0x00000002
-	nifTip              = 0x00000004
-	nimAdd              = 0x00000000
-	nimDelete           = 0x00000002
-	tpmLeftAlign        = 0x0000
-	tpmBottomAlign      = 0x0020
-	tpmRightButton      = 0x0002
-	mfString            = 0x0000
-	mfSeparator         = 0x0800
-	mfChecked           = 0x0008
-	mfUnchecked         = 0x0000
-	trayIconID          = 1
-	trayCallbackMsg     = wmApp + 1
-	menuCommandShowHide = 100
-	menuCommandQuit     = 101
-	menuCommandSizeBase = 200
-	menuCommandStepBase = 300
-	menuCommandWalkBase = 400
+	wmApp                 = 0x8000
+	wmCommand             = 0x0111
+	wmClose               = 0x0010
+	wmDestroy             = 0x0002
+	wmNull                = 0x0000
+	wmRButtonUp           = 0x0205
+	wmLButtonDblClk       = 0x0203
+	csHRedraw             = 0x0002
+	csVRedraw             = 0x0001
+	cwUseDefault          = 0x80000000
+	idiApplication        = 32512
+	idcArrow              = 32512
+	imageIcon             = 1
+	lrDefaultSize         = 0x0040
+	lrShared              = 0x8000
+	nifMessage            = 0x00000001
+	nifIcon               = 0x00000002
+	nifTip                = 0x00000004
+	nimAdd                = 0x00000000
+	nimDelete             = 0x00000002
+	tpmLeftAlign          = 0x0000
+	tpmBottomAlign        = 0x0020
+	tpmRightButton        = 0x0002
+	mfString              = 0x0000
+	mfSeparator           = 0x0800
+	mfChecked             = 0x0008
+	mfUnchecked           = 0x0000
+	trayIconID            = 1
+	trayCallbackMsg       = wmApp + 1
+	menuCommandShowHide   = 100
+	menuCommandQuit       = 101
+	menuCommandToggleDrag = 102
+	menuCommandSizeBase   = 200
+	menuCommandStepBase   = 300
+	menuCommandWalkBase   = 400
 )
 
 type trayController struct {
@@ -304,8 +305,13 @@ func (t *trayController) showMenu() {
 	if !visible {
 		showHideLabel = "Show"
 	}
+	dragLabel := "Disable Drag"
+	if !t.app.currentDragEnabled() {
+		dragLabel = "Enable Drag"
+	}
 
 	appendMenuString(menu, menuCommandShowHide, showHideLabel, false)
+	appendMenuString(menu, menuCommandToggleDrag, dragLabel, !t.app.currentDragEnabled())
 	appendMenuSeparator(menu)
 
 	for index, preset := range scalePresets {
@@ -347,6 +353,8 @@ func (t *trayController) handleCommand(commandID uintptr) {
 	switch {
 	case commandID == menuCommandShowHide:
 		t.app.SetVisible(!t.app.currentVisible())
+	case commandID == menuCommandToggleDrag:
+		t.app.ToggleDragEnabled()
 	case commandID == menuCommandQuit:
 		t.app.Quit()
 	case commandID >= menuCommandSizeBase && commandID < menuCommandSizeBase+uintptr(len(scalePresets)):

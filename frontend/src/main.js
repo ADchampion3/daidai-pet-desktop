@@ -17,8 +17,10 @@ const spriteUrls = {
 let currentDir = 'r';
 let currentState = 'stand';
 let isDragging = false;
+let dragEnabled = true;
 let runtimeListenersReady = false;
 let startupPetSettingsSynced = false;
+let startupDragSettingsSynced = false;
 
 function applyPetSettings(data) {
     if (typeof data?.width === 'number' && Number.isFinite(data.width)) {
@@ -33,15 +35,30 @@ function applyPetSettings(data) {
 function updateSprite() {
     const spriteKey = `${currentState}-${currentDir}`;
     root.style.setProperty('--pet-sprite', `url("${spriteUrls[spriteKey]}")`);
-    pet.className = spriteKey;
+    pet.classList.remove('stand-l', 'stand-r', 'walk-l', 'walk-r');
+    pet.classList.add(spriteKey);
 }
 
 function setDraggingState(active) {
-    isDragging = active;
-    pet.style.cursor = active ? 'grabbing' : 'move';
+    isDragging = dragEnabled && active;
+    pet.style.cursor = dragEnabled ? (isDragging ? 'grabbing' : 'move') : 'default';
+}
+
+function setDragEnabled(enabled) {
+    dragEnabled = Boolean(enabled);
+    pet.classList.toggle('drag-disabled', !dragEnabled);
+    if (!dragEnabled) {
+        setDraggingState(false);
+        return;
+    }
+    pet.style.cursor = 'move';
 }
 
 function startDrag() {
+    if (!dragEnabled) {
+        return;
+    }
+
     setDraggingState(true);
 
     if (window.go?.main?.App) {
@@ -62,6 +79,10 @@ function endDrag() {
 }
 
 function onMouseDown(event) {
+    if (!dragEnabled) {
+        return;
+    }
+
     if (event.button !== 0) {
         return;
     }
@@ -79,6 +100,10 @@ function onMouseMove(event) {
 }
 
 function onTouchStart(event) {
+    if (!dragEnabled) {
+        return;
+    }
+
     if (event.touches.length !== 1) {
         return;
     }
@@ -112,23 +137,38 @@ function setupRuntimeListener() {
             setDraggingState(false);
         });
 
+        window.runtime.EventsOn('updateDragState', (data) => {
+            setDragEnabled(data.enabled);
+        });
+
         window.runtime.EventsOn('updatePetSettings', applyPetSettings);
         runtimeListenersReady = true;
     }
 
-    if (!window.go?.main?.App?.GetPetSettings) {
+    if (!window.go?.main?.App?.GetPetSettings || !window.go?.main?.App?.GetDragEnabled) {
         window.setTimeout(setupRuntimeListener, 100);
         return;
     }
 
-    if (startupPetSettingsSynced) {
+    if (!startupPetSettingsSynced) {
+        window.go.main.App.GetPetSettings()
+            .then((data) => {
+                applyPetSettings(data);
+                startupPetSettingsSynced = true;
+            })
+            .catch(() => {
+                window.setTimeout(setupRuntimeListener, 100);
+            });
+    }
+
+    if (startupDragSettingsSynced) {
         return;
     }
 
-    window.go.main.App.GetPetSettings()
-        .then((data) => {
-            applyPetSettings(data);
-            startupPetSettingsSynced = true;
+    window.go.main.App.GetDragEnabled()
+        .then((enabled) => {
+            setDragEnabled(enabled);
+            startupDragSettingsSynced = true;
         })
         .catch(() => {
             window.setTimeout(setupRuntimeListener, 100);

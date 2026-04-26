@@ -40,6 +40,7 @@ type Config struct {
 	ScalePercent   int      `json:"scalePercent"`
 	StepSize       int      `json:"stepSize"`
 	WalkIntervalMs int      `json:"walkIntervalMs"`
+	DragEnabled    bool     `json:"dragEnabled"`
 }
 
 type Position struct {
@@ -103,6 +104,10 @@ func (a *App) startup(ctx context.Context) {
 
 	a.applyWindowSize()
 	a.moveWindow(x, y)
+	if err := setWindowClickThrough(a.ctx, !a.currentDragEnabled()); err != nil {
+		log.Printf("startup: failed to apply click-through state: %v", err)
+	}
+	a.emitDragState()
 
 	if a.currentVisible() {
 		a.resumeMovementIfVisible()
@@ -221,6 +226,10 @@ func (a *App) clampWindowPosition(x, y int) (int, int) {
 }
 
 func (a *App) SetDragStart() {
+	if !a.currentDragEnabled() {
+		return
+	}
+
 	cursorX, cursorY, ok := getCursorPosition()
 	if !ok {
 		log.Println("SetDragStart: cannot read cursor position")
@@ -530,6 +539,64 @@ func (a *App) currentVisible() bool {
 	return a.cfg.Visible
 }
 
+func (a *App) currentDragEnabled() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil {
+		return defaultDragEnabled
+	}
+	return a.cfg.DragEnabled
+}
+
+func (a *App) SetDragEnabled(enabled bool) {
+	if !enabled {
+		a.stopActiveDrag()
+	}
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.DragEnabled = enabled
+	a.mu.Unlock()
+
+	if err := setWindowClickThrough(a.ctx, !enabled); err != nil {
+		log.Printf("SetDragEnabled: failed to update click-through state: %v", err)
+	}
+	a.saveConfig()
+	a.emitDragState()
+	a.refreshTrayMenu()
+}
+
+func (a *App) ToggleDragEnabled() {
+	a.SetDragEnabled(!a.currentDragEnabled())
+}
+
+func (a *App) GetDragEnabled() bool {
+	return a.currentDragEnabled()
+}
+
+func (a *App) stopActiveDrag() {
+	a.mu.Lock()
+	if !a.isDragging {
+		a.mu.Unlock()
+		return
+	}
+	stop := a.dragStop
+	a.dragStop = nil
+	a.isDragging = false
+	a.dragSeq++
+	a.mu.Unlock()
+
+	if stop != nil {
+		close(stop)
+	}
+
+	a.emitDragEnded()
+	a.resumeMovementIfVisible()
+}
+
 func (a *App) movementBounds() (int, int) {
 	petW, _ := a.petSize()
 	screenX, _, screenW, _ := getVirtualScreenBounds()
@@ -605,6 +672,16 @@ func (a *App) emitDragEnded() {
 	}
 
 	runtime.EventsEmit(a.ctx, "dragEnded")
+}
+
+func (a *App) emitDragState() {
+	if a.ctx == nil {
+		return
+	}
+
+	runtime.EventsEmit(a.ctx, "updateDragState", map[string]interface{}{
+		"enabled": a.currentDragEnabled(),
+	})
 }
 
 func (a *App) emitAnimationState(direction Direction, walking bool) {

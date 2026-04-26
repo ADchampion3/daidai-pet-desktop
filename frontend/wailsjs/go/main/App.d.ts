@@ -3,11 +3,15 @@
 
 export function GetPetSettings():Promise<Record<string, number>>;
 
+export function GetDragEnabled():Promise<boolean>;
+
 export function Quit():Promise<void>;
 
 export function SetDragEnd():Promise<void>;
 
 export function SetDragStart():Promise<void>;
+
+export function SetDragEnabled(arg1:boolean):Promise<void>;
 
 export function SetScalePercent(arg1:number):Promise<void>;
 

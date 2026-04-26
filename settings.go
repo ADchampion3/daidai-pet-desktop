@@ -10,6 +10,7 @@ const (
 	defaultScalePercent   = 100
 	defaultStepSize       = 20
 	defaultWalkIntervalMs = 150
+	defaultDragEnabled    = true
 )
 
 var (
@@ -41,6 +42,7 @@ func newDefaultConfig() *Config {
 		ScalePercent:   defaultScalePercent,
 		StepSize:       defaultStepSize,
 		WalkIntervalMs: defaultWalkIntervalMs,
+		DragEnabled:    defaultDragEnabled,
 	}
 }
 

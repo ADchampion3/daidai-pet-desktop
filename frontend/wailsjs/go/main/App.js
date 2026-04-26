@@ -6,6 +6,10 @@ export function GetPetSettings() {
   return window['go']['main']['App']['GetPetSettings']();
 }
 
+export function GetDragEnabled() {
+  return window['go']['main']['App']['GetDragEnabled']();
+}
+
 export function Quit() {
   return window['go']['main']['App']['Quit']();
 }
@@ -16,6 +20,10 @@ export function SetDragEnd() {
 
 export function SetDragStart() {
   return window['go']['main']['App']['SetDragStart']();
+}
+
+export function SetDragEnabled(arg1) {
+  return window['go']['main']['App']['SetDragEnabled'](arg1);
 }
 
 export function SetScalePercent(arg1) {

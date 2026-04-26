@@ -115,6 +115,41 @@ func TestSetVisibleFalseStopsMovementWithoutContext(t *testing.T) {
 	}
 }
 
+func TestSetDragEnabledFalseStopsActiveDrag(t *testing.T) {
+	app := &App{
+		cfg:      newDefaultConfig(),
+		movement: NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+	}
+	app.mu.Lock()
+	app.isDragging = true
+	app.dragStop = make(chan struct{})
+	app.dragSeq = 3
+	app.mu.Unlock()
+
+	app.SetDragEnabled(false)
+
+	if app.currentDragEnabled() {
+		t.Fatal("currentDragEnabled() = true")
+	}
+	if app.isDragActive() {
+		t.Fatal("isDragActive() = true")
+	}
+}
+
+func TestToggleDragEnabledFlipsState(t *testing.T) {
+	app := &App{cfg: newDefaultConfig()}
+
+	app.ToggleDragEnabled()
+	if app.currentDragEnabled() {
+		t.Fatal("currentDragEnabled() = true after first toggle")
+	}
+
+	app.ToggleDragEnabled()
+	if !app.currentDragEnabled() {
+		t.Fatal("currentDragEnabled() = false after second toggle")
+	}
+}
+
 func TestUpdateMovementSettingsUsesCurrentConfig(t *testing.T) {
 	app := &App{
 		cfg:      newDefaultConfig(),

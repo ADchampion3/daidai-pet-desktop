@@ -35,6 +35,11 @@ func TestTrayWindowProcDispatchesWMCommand(t *testing.T) {
 	if got := app.currentWalkInterval(); got.Milliseconds() != 300 {
 		t.Fatalf("currentWalkInterval() = %s", got)
 	}
+
+	trayWindowProc(uintptr(hwnd), wmCommand, menuCommandToggleDrag, 0)
+	if app.currentDragEnabled() {
+		t.Fatal("currentDragEnabled() = true after tray toggle")
+	}
 }
 
 func TestTrayWindowProcHandlesWMCloseWithoutTrayHandle(t *testing.T) {
