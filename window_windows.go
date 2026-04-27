@@ -30,7 +30,7 @@ func setWindowClickThrough(ctx context.Context, enabled bool) error {
 		return nil
 	}
 
-	hwnd, err := findPetWindow()
+	hwnd, err := getPetHwnd()
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func setWindowBoundsAbsolute(ctx context.Context, x, y, width, height int) error
 		return nil
 	}
 
-	hwnd, err := findPetWindow()
+	hwnd, err := getPetHwnd()
 	if err != nil {
 		return err
 	}
@@ -81,6 +81,20 @@ func setWindowBoundsAbsolute(ctx context.Context, x, y, width, height int) error
 		return fmt.Errorf("SetWindowPos: %w", callErr)
 	}
 	return nil
+}
+
+var petHwnd uintptr
+
+func getPetHwnd() (uintptr, error) {
+	if petHwnd != 0 {
+		return petHwnd, nil
+	}
+	hwnd, err := findPetWindow()
+	if err != nil {
+		return 0, err
+	}
+	petHwnd = hwnd
+	return hwnd, nil
 }
 
 func findPetWindow() (uintptr, error) {

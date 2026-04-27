@@ -15,8 +15,10 @@ func withDisplayLayoutForTest(t *testing.T, layout displayLayout) {
 	displayLayoutProvider = func() displayLayout {
 		return layout
 	}
+	invalidateLayoutCache()
 	t.Cleanup(func() {
 		displayLayoutProvider = previous
+		invalidateLayoutCache()
 	})
 }
 

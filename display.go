@@ -1,6 +1,9 @@
 package main
 
-import "math"
+import (
+	"sync"
+	"time"
+)
 
 type displayRect struct {
 	Left   int
@@ -17,13 +20,42 @@ type movementBoundsProvider func(x, y int) (int, int, int, int)
 
 var displayLayoutProvider = readDisplayLayout
 
+var (
+	layoutCacheMu    sync.RWMutex
+	layoutCache      displayLayout
+	layoutCacheStamp time.Time
+)
+
+const layoutCacheTTL = 2 * time.Second
+
+func invalidateLayoutCache() {
+	layoutCacheMu.Lock()
+	layoutCache = nil
+	layoutCacheStamp = time.Time{}
+	layoutCacheMu.Unlock()
+}
+
 func getDisplayLayout() displayLayout {
-	displays := displayLayoutProvider()
-	if len(displays) == 0 {
-		x, y, w, h := getVirtualScreenBounds()
-		displays = displayLayout{{Left: x, Top: y, Right: x + w, Bottom: y + h}}
+	layoutCacheMu.RLock()
+	if time.Since(layoutCacheStamp) < layoutCacheTTL && len(layoutCache) > 0 {
+		cached := layoutCache
+		layoutCacheMu.RUnlock()
+		return cached
 	}
-	return displays
+	layoutCacheMu.RUnlock()
+
+	fresh := displayLayoutProvider()
+	if len(fresh) == 0 {
+		x, y, w, h := getVirtualScreenBounds()
+		fresh = displayLayout{{Left: x, Top: y, Right: x + w, Bottom: y + h}}
+	}
+
+	layoutCacheMu.Lock()
+	layoutCache = fresh
+	layoutCacheStamp = time.Now()
+	layoutCacheMu.Unlock()
+
+	return fresh
 }
 
 func (l displayLayout) bounds() displayRect {
@@ -197,32 +229,18 @@ func (r displayRect) containsWindow(x, y, width, height int) bool {
 }
 
 func (r displayRect) windowPhysicalSize(width, height int) (int, int) {
-	return scaleWithDPI(width, r.dpiX()), scaleWithDPI(height, r.dpiY())
+	return scaleWithDPI(width, r.DPIX), scaleWithDPI(height, r.DPIY)
 }
 
 func (r displayRect) intersectionArea(x, y, width, height int) int {
-	left := maxInt(r.Left, x)
-	top := maxInt(r.Top, y)
-	right := minInt(r.Right, x+width)
-	bottom := minInt(r.Bottom, y+height)
+	left := max(r.Left, x)
+	top := max(r.Top, y)
+	right := min(r.Right, x+width)
+	bottom := min(r.Bottom, y+height)
 	if right <= left || bottom <= top {
 		return 0
 	}
 	return (right - left) * (bottom - top)
-}
-
-func (r displayRect) dpiX() uint {
-	if r.DPIX == 0 {
-		return 96
-	}
-	return r.DPIX
-}
-
-func (r displayRect) dpiY() uint {
-	if r.DPIY == 0 {
-		return 96
-	}
-	return r.DPIY
 }
 
 func (r displayRect) centerWindowPosition(width, height int) (int, int) {
@@ -303,24 +321,13 @@ func mergeDisplayIntervals(intervals []displayInterval, windowWidth int) []displ
 	return merged
 }
 
-func clampInt(value, minValue, maxValue int) int {
-	return int(math.Min(float64(maxValue), math.Max(float64(minValue), float64(value))))
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 func scaleWithDPI(pixels int, dpi uint) int {
+	if dpi == 0 {
+		dpi = 96
+	}
 	return pixels * int(dpi) / 96
+}
+
+func clampInt(value, lo, hi int) int {
+	return max(lo, min(hi, value))
 }

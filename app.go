@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -76,7 +75,6 @@ type winPoint struct {
 }
 
 func NewApp() *App {
-	rand.Seed(time.Now().UnixNano())
 	return &App{}
 }
 
