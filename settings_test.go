@@ -17,6 +17,9 @@ func TestNormalizeConfigAddsDefaults(t *testing.T) {
 	if !cfg.DragEnabled {
 		t.Fatal("expected drag enabled default true")
 	}
+	if cfg.DisplayIndex != defaultDisplayIndex {
+		t.Fatalf("display index = %d", cfg.DisplayIndex)
+	}
 	if cfg.ScalePercent != defaultScalePercent {
 		t.Fatalf("scale = %d", cfg.ScalePercent)
 	}
@@ -34,6 +37,7 @@ func TestNormalizeConfigRejectsInvalidPresetValues(t *testing.T) {
 	cfg.ScalePercent = 99
 	cfg.StepSize = 999
 	cfg.WalkIntervalMs = 42
+	cfg.DisplayIndex = -1
 
 	NormalizeConfig(cfg)
 
@@ -45,6 +49,9 @@ func TestNormalizeConfigRejectsInvalidPresetValues(t *testing.T) {
 	}
 	if cfg.WalkIntervalMs != defaultWalkIntervalMs {
 		t.Fatalf("interval = %d", cfg.WalkIntervalMs)
+	}
+	if cfg.DisplayIndex != defaultDisplayIndex {
+		t.Fatalf("display index = %d", cfg.DisplayIndex)
 	}
 }
 

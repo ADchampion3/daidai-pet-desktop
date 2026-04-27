@@ -7,6 +7,8 @@ export function GetPetSettings():Promise<Record<string, number>>;
 
 export function Quit():Promise<void>;
 
+export function SetDisplayIndex(arg1:number):Promise<void>;
+
 export function SetDragEnabled(arg1:boolean):Promise<void>;
 
 export function SetDragEnd():Promise<void>;

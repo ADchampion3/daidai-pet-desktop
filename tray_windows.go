@@ -13,41 +13,42 @@ import (
 )
 
 const (
-	wmApp                 = 0x8000
-	wmCommand             = 0x0111
-	wmClose               = 0x0010
-	wmDestroy             = 0x0002
-	wmNull                = 0x0000
-	wmRButtonUp           = 0x0205
-	wmLButtonDblClk       = 0x0203
-	csHRedraw             = 0x0002
-	csVRedraw             = 0x0001
-	cwUseDefault          = 0x80000000
-	idiApplication        = 32512
-	idcArrow              = 32512
-	imageIcon             = 1
-	lrDefaultSize         = 0x0040
-	lrShared              = 0x8000
-	nifMessage            = 0x00000001
-	nifIcon               = 0x00000002
-	nifTip                = 0x00000004
-	nimAdd                = 0x00000000
-	nimDelete             = 0x00000002
-	tpmLeftAlign          = 0x0000
-	tpmBottomAlign        = 0x0020
-	tpmRightButton        = 0x0002
-	mfString              = 0x0000
-	mfSeparator           = 0x0800
-	mfChecked             = 0x0008
-	mfUnchecked           = 0x0000
-	trayIconID            = 1
-	trayCallbackMsg       = wmApp + 1
-	menuCommandShowHide   = 100
-	menuCommandQuit       = 101
-	menuCommandToggleDrag = 102
-	menuCommandSizeBase   = 200
-	menuCommandStepBase   = 300
-	menuCommandWalkBase   = 400
+	wmApp                  = 0x8000
+	wmCommand              = 0x0111
+	wmClose                = 0x0010
+	wmDestroy              = 0x0002
+	wmNull                 = 0x0000
+	wmRButtonUp            = 0x0205
+	wmLButtonDblClk        = 0x0203
+	csHRedraw              = 0x0002
+	csVRedraw              = 0x0001
+	cwUseDefault           = 0x80000000
+	idiApplication         = 32512
+	idcArrow               = 32512
+	imageIcon              = 1
+	lrDefaultSize          = 0x0040
+	lrShared               = 0x8000
+	nifMessage             = 0x00000001
+	nifIcon                = 0x00000002
+	nifTip                 = 0x00000004
+	nimAdd                 = 0x00000000
+	nimDelete              = 0x00000002
+	tpmLeftAlign           = 0x0000
+	tpmBottomAlign         = 0x0020
+	tpmRightButton         = 0x0002
+	mfString               = 0x0000
+	mfSeparator            = 0x0800
+	mfChecked              = 0x0008
+	mfUnchecked            = 0x0000
+	trayIconID             = 1
+	trayCallbackMsg        = wmApp + 1
+	menuCommandShowHide    = 100
+	menuCommandQuit        = 101
+	menuCommandToggleDrag  = 102
+	menuCommandSizeBase    = 200
+	menuCommandStepBase    = 300
+	menuCommandWalkBase    = 400
+	menuCommandDisplayBase = 500
 )
 
 type trayController struct {
@@ -300,6 +301,8 @@ func (t *trayController) showMenu() {
 	scalePercent := t.app.currentScalePercent()
 	stepSize := t.app.currentStepSize()
 	walkInterval := int(t.app.currentWalkInterval() / 1_000_000)
+	displayIndex := t.app.currentDisplayIndex()
+	displays := getDisplayLayout()
 
 	showHideLabel := "Hide"
 	if !visible {
@@ -328,6 +331,12 @@ func (t *trayController) showMenu() {
 		appendMenuString(menu, uintptr(menuCommandWalkBase+index), fmt.Sprintf("Interval %dms", preset), preset == walkInterval)
 	}
 	appendMenuSeparator(menu)
+
+	for index := range displays {
+		appendMenuString(menu, uintptr(menuCommandDisplayBase+index), fmt.Sprintf("Display %d", index+1), index == displayIndex)
+	}
+	appendMenuSeparator(menu)
+
 	appendMenuString(menu, menuCommandQuit, "Quit", false)
 
 	var pt point
@@ -363,6 +372,8 @@ func (t *trayController) handleCommand(commandID uintptr) {
 		t.app.SetStepSize(stepSizePresets[commandID-menuCommandStepBase])
 	case commandID >= menuCommandWalkBase && commandID < menuCommandWalkBase+uintptr(len(walkIntervalPresets)):
 		t.app.SetWalkIntervalMs(walkIntervalPresets[commandID-menuCommandWalkBase])
+	case commandID >= menuCommandDisplayBase:
+		t.app.SetDisplayIndex(int(commandID - menuCommandDisplayBase))
 	}
 }
 

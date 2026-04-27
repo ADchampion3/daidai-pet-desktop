@@ -9,6 +9,17 @@ import (
 	"time"
 )
 
+func withDisplayLayoutForTest(t *testing.T, layout displayLayout) {
+	t.Helper()
+	previous := displayLayoutProvider
+	displayLayoutProvider = func() displayLayout {
+		return layout
+	}
+	t.Cleanup(func() {
+		displayLayoutProvider = previous
+	})
+}
+
 func TestCurrentScalePercentUsesConfiguredValue(t *testing.T) {
 	app := &App{cfg: newDefaultConfig()}
 	app.cfg.ScalePercent = 120
@@ -36,18 +47,117 @@ func TestCurrentWalkIntervalUsesConfiguredMilliseconds(t *testing.T) {
 }
 
 func TestMovementBoundsUseScaledWidth(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: -1280, Top: 0, Right: 0, Bottom: 1024},
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+	})
 	app := &App{cfg: newDefaultConfig()}
 	app.cfg.ScalePercent = 150
+	app.cfg.DisplayIndex = 1
 
 	minX, maxX := app.movementBounds()
-	screenX, _, screenW, _ := getVirtualScreenBounds()
 	expectedWidth, _ := petSizeForScale(150)
 
-	if minX != screenX {
+	if minX != 0 {
 		t.Fatalf("minX = %d", minX)
 	}
-	if maxX != screenX+screenW-expectedWidth {
+	if maxX != 1920-expectedWidth {
 		t.Fatalf("maxX = %d", maxX)
+	}
+}
+
+func TestClampWindowPositionAllowsNegativeMonitorCoordinates(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: -1280, Top: 0, Right: 0, Bottom: 1024},
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+	})
+
+	x, y := clampWindowPositionForSize(-900, 100, 60, 92)
+
+	if x != -900 || y != 100 {
+		t.Fatalf("position = %d,%d", x, y)
+	}
+}
+
+func TestClampWindowPositionAvoidsVirtualScreenGaps(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+		{Left: 1920, Top: 300, Right: 3200, Bottom: 1324},
+	})
+
+	x, y := clampWindowPositionForSize(2100, 100, 60, 92)
+
+	if x != 2100 || y != 300 {
+		t.Fatalf("position = %d,%d", x, y)
+	}
+}
+
+func TestClampWindowPositionKeepsWindowInsideNearestDisplayAfterScale(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: 0, Top: 0, Right: 200, Bottom: 200},
+		{Left: 300, Top: 0, Right: 500, Bottom: 200},
+	})
+
+	x, y := clampWindowPositionForSize(470, 170, 90, 138)
+
+	if x != 410 || y != 62 {
+		t.Fatalf("position = %d,%d", x, y)
+	}
+}
+
+func TestMovementBoundsUseCurrentYVisibleInterval(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+		{Left: 1920, Top: 300, Right: 3200, Bottom: 1324},
+	})
+	app := &App{cfg: newDefaultConfig()}
+
+	app.cfg.Position = Position{X: 2000, Y: 100}
+	minX, maxX := app.movementBounds()
+	if minX != 0 || maxX != 1920-basePetWidth {
+		t.Fatalf("top-row bounds = %d..%d", minX, maxX)
+	}
+
+	app.cfg.DisplayIndex = 1
+	app.cfg.Position = Position{X: 2000, Y: 400}
+	minX, maxX = app.movementBounds()
+	if minX != 1920 || maxX != 3200-basePetWidth {
+		t.Fatalf("selected-display bounds = %d..%d", minX, maxX)
+	}
+}
+
+func TestSetDisplayIndexMovesPetToSelectedDisplay(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+		{Left: 1920, Top: 300, Right: 3200, Bottom: 1324},
+	})
+	app := &App{cfg: newDefaultConfig()}
+	app.cfg.Position = Position{X: 100, Y: 100}
+
+	app.SetDisplayIndex(1)
+
+	if app.cfg.DisplayIndex != 1 {
+		t.Fatalf("display index = %d", app.cfg.DisplayIndex)
+	}
+	if app.cfg.Position.X < 1920 || app.cfg.Position.X+basePetWidth > 3200 {
+		t.Fatalf("x not on selected display: %d", app.cfg.Position.X)
+	}
+	if app.cfg.Position.Y < 300 || app.cfg.Position.Y+basePetHeight > 1324 {
+		t.Fatalf("y not on selected display: %d", app.cfg.Position.Y)
+	}
+}
+
+func TestSetDisplayIndexRejectsMissingDisplay(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+	})
+	app := &App{cfg: newDefaultConfig()}
+	app.cfg.DisplayIndex = 0
+
+	app.SetDisplayIndex(4)
+
+	if app.cfg.DisplayIndex != 0 {
+		t.Fatalf("display index = %d", app.cfg.DisplayIndex)
 	}
 }
 

@@ -36,3 +36,25 @@ func TestMovementUpdateSettings(t *testing.T) {
 		t.Fatalf("bounds = %d..%d", m.minX, m.maxX)
 	}
 }
+
+func TestMovementRefreshesBoundsForCurrentYBeforeMoving(t *testing.T) {
+	m := NewMovement(1800, 100, 0, 1860, 100, 150*time.Millisecond)
+	m.direction = Right
+	m.running = true
+	m.SetBoundsProvider(func(x, y int) (int, int) {
+		if y < 300 {
+			return 0, 1860
+		}
+		return 0, 3140
+	})
+
+	m.doMove()
+
+	if m.x != 1860 {
+		t.Fatalf("x = %d", m.x)
+	}
+	if m.direction != Left {
+		t.Fatalf("direction = %v", m.direction)
+	}
+	m.Stop()
+}

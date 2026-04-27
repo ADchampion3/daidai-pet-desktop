@@ -41,6 +41,7 @@ type Config struct {
 	StepSize       int      `json:"stepSize"`
 	WalkIntervalMs int      `json:"walkIntervalMs"`
 	DragEnabled    bool     `json:"dragEnabled"`
+	DisplayIndex   int      `json:"displayIndex"`
 }
 
 type Position struct {
@@ -84,14 +85,13 @@ func (a *App) startup(ctx context.Context) {
 	a.cfg = a.loadConfig()
 
 	width, height := a.petSize()
-	screenX, _, screenW, _ := getVirtualScreenBounds()
-	minX := screenX
-	maxX := screenX + screenW - width
-	x, y := clampWindowPositionForSize(a.cfg.Position.X, a.cfg.Position.Y, width, height)
+	x, y := a.clampWindowPositionForSize(a.cfg.Position.X, a.cfg.Position.Y, width, height)
 	a.setCurrentPosition(x, y)
+	minX, maxX := a.movementBounds()
 
 	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", x, y, minX, maxX)
 	a.movement = NewMovement(x, y, minX, maxX, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
+	a.movement.SetBoundsProvider(a.movementBoundsForPosition)
 	a.movement.SetCallback(func(x, y int, direction Direction, walking bool) {
 		if a.isDragActive() {
 			return
@@ -201,30 +201,7 @@ func getVirtualScreenBounds() (int, int, int, int) {
 }
 
 func clampWindowPositionForSize(x, y int, width, height int) (int, int) {
-	screenX, screenY, screenW, screenH := getVirtualScreenBounds()
-	maxX := screenX + screenW - width
-	maxY := screenY + screenH - height
-
-	if maxX < screenX {
-		maxX = screenX
-	}
-	if maxY < screenY {
-		maxY = screenY
-	}
-
-	if x < screenX {
-		x = screenX
-	} else if x > maxX {
-		x = maxX
-	}
-
-	if y < screenY {
-		y = screenY
-	} else if y > maxY {
-		y = maxY
-	}
-
-	return x, y
+	return getDisplayLayout().clampWindowPosition(x, y, width, height)
 }
 
 func (a *App) petSize() (int, int) {
@@ -233,7 +210,11 @@ func (a *App) petSize() (int, int) {
 
 func (a *App) clampWindowPosition(x, y int) (int, int) {
 	width, height := a.petSize()
-	return clampWindowPositionForSize(x, y, width, height)
+	return a.clampWindowPositionForSize(x, y, width, height)
+}
+
+func (a *App) clampWindowPositionForSize(x, y int, width, height int) (int, int) {
+	return getDisplayLayout().clampWindowPositionToDisplay(a.currentDisplayIndex(), x, y, width, height)
 }
 
 func (a *App) SetDragStart() {
@@ -396,7 +377,9 @@ func (a *App) moveWindow(x, y int) {
 		return
 	}
 
-	runtime.WindowSetPosition(a.ctx, x, y)
+	if err := setWindowPositionAbsolute(a.ctx, x, y); err != nil {
+		log.Printf("moveWindow: failed to move window: %v", err)
+	}
 }
 
 func (a *App) applyWindowSize() {
@@ -560,6 +543,44 @@ func (a *App) currentDragEnabled() bool {
 	return a.cfg.DragEnabled
 }
 
+func (a *App) currentDisplayIndex() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.cfg == nil || a.cfg.DisplayIndex < 0 {
+		return defaultDisplayIndex
+	}
+	return a.cfg.DisplayIndex
+}
+
+func (a *App) SetDisplayIndex(index int) {
+	layout := getDisplayLayout()
+	display, ok := layout.display(index)
+	if !ok {
+		return
+	}
+
+	width, height := a.petSize()
+	x, y := display.centerWindowPosition(width, height)
+
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.cfg = newDefaultConfig()
+	}
+	a.cfg.DisplayIndex = index
+	a.cfg.Position.X = x
+	a.cfg.Position.Y = y
+	a.mu.Unlock()
+
+	a.updateMovementSettings()
+	if a.movement != nil {
+		a.movement.SetPosition(x, y)
+	}
+	a.moveWindow(x, y)
+	a.saveConfig()
+	a.refreshTrayMenu()
+}
+
 func (a *App) SetDragEnabled(enabled bool) {
 	if !enabled {
 		a.stopActiveDrag()
@@ -609,13 +630,13 @@ func (a *App) stopActiveDrag() {
 }
 
 func (a *App) movementBounds() (int, int) {
-	petW, _ := a.petSize()
-	screenX, _, screenW, _ := getVirtualScreenBounds()
-	maxX := screenX + screenW - petW
-	if maxX < screenX {
-		maxX = screenX
-	}
-	return screenX, maxX
+	x, y := a.currentPosition()
+	return a.movementBoundsForPosition(x, y)
+}
+
+func (a *App) movementBoundsForPosition(x, y int) (int, int) {
+	width, height := a.petSize()
+	return getDisplayLayout().movementBoundsForDisplay(a.currentDisplayIndex(), x, y, width, height)
 }
 
 func (a *App) updateMovementSettings() {
@@ -625,6 +646,7 @@ func (a *App) updateMovementSettings() {
 
 	minX, maxX := a.movementBounds()
 	a.movement.UpdateSettings(a.currentStepSize(), a.currentWalkInterval(), minX, maxX)
+	a.movement.SetBoundsProvider(a.movementBoundsForPosition)
 }
 
 func (a *App) resumeMovementIfVisible() {

@@ -11,6 +11,7 @@ const (
 	defaultStepSize       = 20
 	defaultWalkIntervalMs = 150
 	defaultDragEnabled    = true
+	defaultDisplayIndex   = 0
 )
 
 var (
@@ -33,6 +34,9 @@ func NormalizeConfig(cfg *Config) {
 	if !containsPreset(walkIntervalPresets, cfg.WalkIntervalMs) {
 		cfg.WalkIntervalMs = defaultWalkIntervalMs
 	}
+	if cfg.DisplayIndex < 0 {
+		cfg.DisplayIndex = defaultDisplayIndex
+	}
 }
 
 func newDefaultConfig() *Config {
@@ -43,6 +47,7 @@ func newDefaultConfig() *Config {
 		StepSize:       defaultStepSize,
 		WalkIntervalMs: defaultWalkIntervalMs,
 		DragEnabled:    defaultDragEnabled,
+		DisplayIndex:   defaultDisplayIndex,
 	}
 }
 

@@ -13,6 +13,9 @@ import (
 const (
 	gwlExStyle      = -20
 	wsExTransparent = 0x00000020
+	swpNoSize       = 0x0001
+	swpNoZOrder     = 0x0004
+	swpNoActivate   = 0x0010
 	windowTitle     = "Pet"
 )
 
@@ -20,6 +23,7 @@ var (
 	procFindWindowW       = user32.NewProc("FindWindowW")
 	procGetWindowLongPtrW = user32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtrW = user32.NewProc("SetWindowLongPtrW")
+	procSetWindowPos      = user32.NewProc("SetWindowPos")
 )
 
 func setWindowClickThrough(ctx context.Context, enabled bool) error {
@@ -53,6 +57,31 @@ func setWindowClickThrough(ctx context.Context, enabled bool) error {
 
 func windowLongIndex(value int32) uintptr {
 	return uintptr(uint32(value))
+}
+
+func setWindowPositionAbsolute(ctx context.Context, x, y int) error {
+	if ctx == nil {
+		return nil
+	}
+
+	hwnd, err := findPetWindow()
+	if err != nil {
+		return err
+	}
+
+	ret, _, callErr := procSetWindowPos.Call(
+		hwnd,
+		0,
+		uintptr(int32(x)),
+		uintptr(int32(y)),
+		0,
+		0,
+		swpNoSize|swpNoZOrder|swpNoActivate,
+	)
+	if ret == 0 && callErr != windows.ERROR_SUCCESS {
+		return fmt.Errorf("SetWindowPos: %w", callErr)
+	}
+	return nil
 }
 
 func findPetWindow() (uintptr, error) {

@@ -14,6 +14,10 @@ export function Quit() {
   return window['go']['main']['App']['Quit']();
 }
 
+export function SetDisplayIndex(arg1) {
+  return window['go']['main']['App']['SetDisplayIndex'](arg1);
+}
+
 export function SetDragEnabled(arg1) {
   return window['go']['main']['App']['SetDragEnabled'](arg1);
 }

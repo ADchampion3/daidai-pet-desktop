@@ -16,6 +16,7 @@ type Movement struct {
 	maxX         int
 	stepSize     int
 	moveInterval time.Duration
+	bounds       movementBoundsProvider
 	moveTimer    *time.Timer
 	onUpdate     func(x, y int, direction Direction, walking bool)
 	running      bool
@@ -82,6 +83,7 @@ func (m *Movement) SetPosition(x, y int) {
 
 	m.x = x
 	m.y = y
+	m.refreshBoundsLocked()
 }
 
 func (m *Movement) UpdateSettings(stepSize int, moveInterval time.Duration, minX int, maxX int) {
@@ -92,6 +94,7 @@ func (m *Movement) UpdateSettings(stepSize int, moveInterval time.Duration, minX
 	m.moveInterval = moveInterval
 	m.minX = minX
 	m.maxX = maxX
+	m.refreshBoundsLocked()
 
 	if m.x < m.minX {
 		m.x = m.minX
@@ -100,12 +103,21 @@ func (m *Movement) UpdateSettings(stepSize int, moveInterval time.Duration, minX
 	}
 }
 
+func (m *Movement) SetBoundsProvider(bounds movementBoundsProvider) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.bounds = bounds
+	m.refreshBoundsLocked()
+}
+
 func (m *Movement) doMove() {
 	m.mu.Lock()
 	if !m.running {
 		m.mu.Unlock()
 		return
 	}
+	m.refreshBoundsLocked()
 
 	if m.direction == Right {
 		m.x += m.stepSize
@@ -189,5 +201,17 @@ func (m *Movement) scheduleBounce() {
 func (m *Movement) notifyUpdateLocked(walking bool) {
 	if m.onUpdate != nil {
 		m.onUpdate(m.x, m.y, m.direction, walking)
+	}
+}
+
+func (m *Movement) refreshBoundsLocked() {
+	if m.bounds == nil {
+		return
+	}
+	m.minX, m.maxX = m.bounds(m.x, m.y)
+	if m.x < m.minX {
+		m.x = m.minX
+	} else if m.x > m.maxX {
+		m.x = m.maxX
 	}
 }
