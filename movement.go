@@ -8,12 +8,19 @@ import (
 
 const standDuration = 300 * time.Millisecond
 
+const (
+	minVerticalBounceOffset = 10
+	maxVerticalBounceOffset = 40
+)
+
 type Movement struct {
 	mu           sync.Mutex
 	x, y         int
 	direction    Direction
 	minX         int
 	maxX         int
+	minY         int
+	maxY         int
 	stepSize     int
 	moveInterval time.Duration
 	bounds       movementBoundsProvider
@@ -22,13 +29,15 @@ type Movement struct {
 	running      bool
 }
 
-func NewMovement(x, y, minX, maxX, stepSize int, moveInterval time.Duration) *Movement {
+func NewMovement(x, y, minX, maxX, minY, maxY, stepSize int, moveInterval time.Duration) *Movement {
 	m := &Movement{
 		x:            x,
 		y:            y,
 		direction:    Right,
 		minX:         minX,
 		maxX:         maxX,
+		minY:         minY,
+		maxY:         maxY,
 		stepSize:     stepSize,
 		moveInterval: moveInterval,
 	}
@@ -86,7 +95,7 @@ func (m *Movement) SetPosition(x, y int) {
 	m.refreshBoundsLocked()
 }
 
-func (m *Movement) UpdateSettings(stepSize int, moveInterval time.Duration, minX int, maxX int) {
+func (m *Movement) UpdateSettings(stepSize int, moveInterval time.Duration, minX int, maxX int, minY int, maxY int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -94,13 +103,11 @@ func (m *Movement) UpdateSettings(stepSize int, moveInterval time.Duration, minX
 	m.moveInterval = moveInterval
 	m.minX = minX
 	m.maxX = maxX
+	m.minY = minY
+	m.maxY = maxY
 	m.refreshBoundsLocked()
 
-	if m.x < m.minX {
-		m.x = m.minX
-	} else if m.x > m.maxX {
-		m.x = m.maxX
-	}
+	m.clampPositionLocked()
 }
 
 func (m *Movement) SetBoundsProvider(bounds movementBoundsProvider) {
@@ -134,6 +141,9 @@ func (m *Movement) doMove() {
 		m.x = m.maxX
 		m.direction = Left
 		bounced = true
+	}
+	if bounced {
+		m.applyVerticalBounceLocked()
 	}
 
 	m.notifyUpdateLocked(true)
@@ -208,10 +218,28 @@ func (m *Movement) refreshBoundsLocked() {
 	if m.bounds == nil {
 		return
 	}
-	m.minX, m.maxX = m.bounds(m.x, m.y)
+	m.minX, m.maxX, m.minY, m.maxY = m.bounds(m.x, m.y)
+	m.clampPositionLocked()
+}
+
+func (m *Movement) clampPositionLocked() {
 	if m.x < m.minX {
 		m.x = m.minX
 	} else if m.x > m.maxX {
 		m.x = m.maxX
 	}
+	if m.y < m.minY {
+		m.y = m.minY
+	} else if m.y > m.maxY {
+		m.y = m.maxY
+	}
+}
+
+func (m *Movement) applyVerticalBounceLocked() {
+	delta := minVerticalBounceOffset + rand.Intn(maxVerticalBounceOffset-minVerticalBounceOffset+1)
+	if rand.Intn(2) == 0 {
+		delta = -delta
+	}
+	m.y += delta
+	m.clampPositionLocked()
 }

@@ -87,10 +87,10 @@ func (a *App) startup(ctx context.Context) {
 	width, height := a.petSize()
 	x, y := a.clampWindowPositionForSize(a.cfg.Position.X, a.cfg.Position.Y, width, height)
 	a.setCurrentPosition(x, y)
-	minX, maxX := a.movementBounds()
+	minX, maxX, minY, maxY := a.movementBounds()
 
 	log.Printf("Initializing movement at (%d, %d), screen x range: %d..%d", x, y, minX, maxX)
-	a.movement = NewMovement(x, y, minX, maxX, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
+	a.movement = NewMovement(x, y, minX, maxX, minY, maxY, a.cfg.StepSize, time.Duration(a.cfg.WalkIntervalMs)*time.Millisecond)
 	a.movement.SetBoundsProvider(a.movementBoundsForPosition)
 	a.movement.SetCallback(func(x, y int, direction Direction, walking bool) {
 		if a.isDragActive() {
@@ -629,12 +629,12 @@ func (a *App) stopActiveDrag() {
 	a.resumeMovementIfVisible()
 }
 
-func (a *App) movementBounds() (int, int) {
+func (a *App) movementBounds() (int, int, int, int) {
 	x, y := a.currentPosition()
 	return a.movementBoundsForPosition(x, y)
 }
 
-func (a *App) movementBoundsForPosition(x, y int) (int, int) {
+func (a *App) movementBoundsForPosition(x, y int) (int, int, int, int) {
 	width, height := a.petSize()
 	return getDisplayLayout().movementBoundsForDisplay(a.currentDisplayIndex(), x, y, width, height)
 }
@@ -644,8 +644,8 @@ func (a *App) updateMovementSettings() {
 		return
 	}
 
-	minX, maxX := a.movementBounds()
-	a.movement.UpdateSettings(a.currentStepSize(), a.currentWalkInterval(), minX, maxX)
+	minX, maxX, minY, maxY := a.movementBounds()
+	a.movement.UpdateSettings(a.currentStepSize(), a.currentWalkInterval(), minX, maxX, minY, maxY)
 	a.movement.SetBoundsProvider(a.movementBoundsForPosition)
 }
 

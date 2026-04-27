@@ -55,14 +55,20 @@ func TestMovementBoundsUseScaledWidth(t *testing.T) {
 	app.cfg.ScalePercent = 150
 	app.cfg.DisplayIndex = 1
 
-	minX, maxX := app.movementBounds()
-	expectedWidth, _ := petSizeForScale(150)
+	minX, maxX, minY, maxY := app.movementBounds()
+	expectedWidth, expectedHeight := petSizeForScale(150)
 
 	if minX != 0 {
 		t.Fatalf("minX = %d", minX)
 	}
 	if maxX != 1920-expectedWidth {
 		t.Fatalf("maxX = %d", maxX)
+	}
+	if minY != 0 {
+		t.Fatalf("minY = %d", minY)
+	}
+	if maxY != 1080-expectedHeight {
+		t.Fatalf("maxY = %d", maxY)
 	}
 }
 
@@ -113,16 +119,22 @@ func TestMovementBoundsUseCurrentYVisibleInterval(t *testing.T) {
 	app := &App{cfg: newDefaultConfig()}
 
 	app.cfg.Position = Position{X: 2000, Y: 100}
-	minX, maxX := app.movementBounds()
+	minX, maxX, minY, maxY := app.movementBounds()
 	if minX != 0 || maxX != 1920-basePetWidth {
-		t.Fatalf("top-row bounds = %d..%d", minX, maxX)
+		t.Fatalf("top-row x bounds = %d..%d", minX, maxX)
+	}
+	if minY != 0 || maxY != 1080-basePetHeight {
+		t.Fatalf("top-row y bounds = %d..%d", minY, maxY)
 	}
 
 	app.cfg.DisplayIndex = 1
 	app.cfg.Position = Position{X: 2000, Y: 400}
-	minX, maxX = app.movementBounds()
+	minX, maxX, minY, maxY = app.movementBounds()
 	if minX != 1920 || maxX != 3200-basePetWidth {
-		t.Fatalf("selected-display bounds = %d..%d", minX, maxX)
+		t.Fatalf("selected-display x bounds = %d..%d", minX, maxX)
+	}
+	if minY != 300 || maxY != 1324-basePetHeight {
+		t.Fatalf("selected-display y bounds = %d..%d", minY, maxY)
 	}
 }
 
@@ -164,7 +176,7 @@ func TestSetDisplayIndexRejectsMissingDisplay(t *testing.T) {
 func TestResumeMovementIfVisibleResumesWhenVisibleAndNotDragging(t *testing.T) {
 	app := &App{
 		cfg:      newDefaultConfig(),
-		movement: NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+		movement: NewMovement(100, 100, 0, 600, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
 	}
 
 	app.resumeMovementIfVisible()
@@ -183,7 +195,7 @@ func TestResumeMovementIfVisibleResumesWhenVisibleAndNotDragging(t *testing.T) {
 func TestResumeMovementIfVisibleDoesNotResumeWhileDragging(t *testing.T) {
 	app := &App{
 		cfg:        newDefaultConfig(),
-		movement:   NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+		movement:   NewMovement(100, 100, 0, 600, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
 		isDragging: true,
 	}
 
@@ -203,7 +215,7 @@ func TestResumeMovementIfVisibleDoesNotResumeWhileDragging(t *testing.T) {
 func TestSetVisibleFalseStopsMovementWithoutContext(t *testing.T) {
 	app := &App{
 		cfg:      newDefaultConfig(),
-		movement: NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+		movement: NewMovement(100, 100, 0, 600, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
 	}
 	app.movement.Resume()
 
@@ -229,7 +241,7 @@ func TestSetVisibleFalseStopsMovementWithoutContext(t *testing.T) {
 func TestSetDragEnabledFalseStopsActiveDrag(t *testing.T) {
 	app := &App{
 		cfg:      newDefaultConfig(),
-		movement: NewMovement(100, 100, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+		movement: NewMovement(100, 100, 0, 600, 0, 600, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
 	}
 	app.mu.Lock()
 	app.isDragging = true
@@ -264,7 +276,7 @@ func TestToggleDragEnabledFlipsState(t *testing.T) {
 func TestUpdateMovementSettingsUsesCurrentConfig(t *testing.T) {
 	app := &App{
 		cfg:      newDefaultConfig(),
-		movement: NewMovement(10000, 100, 0, 50, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
+		movement: NewMovement(10000, 10000, 0, 50, 0, 50, defaultStepSize, time.Duration(defaultWalkIntervalMs)*time.Millisecond),
 	}
 	app.cfg.ScalePercent = 150
 	app.cfg.StepSize = 30
@@ -272,7 +284,7 @@ func TestUpdateMovementSettingsUsesCurrentConfig(t *testing.T) {
 
 	app.updateMovementSettings()
 
-	expectedMinX, expectedMaxX := app.movementBounds()
+	expectedMinX, expectedMaxX, expectedMinY, expectedMaxY := app.movementBounds()
 
 	app.movement.mu.Lock()
 	defer app.movement.mu.Unlock()
@@ -289,8 +301,17 @@ func TestUpdateMovementSettingsUsesCurrentConfig(t *testing.T) {
 	if app.movement.maxX != expectedMaxX {
 		t.Fatalf("maxX = %d", app.movement.maxX)
 	}
+	if app.movement.minY != expectedMinY {
+		t.Fatalf("minY = %d", app.movement.minY)
+	}
+	if app.movement.maxY != expectedMaxY {
+		t.Fatalf("maxY = %d", app.movement.maxY)
+	}
 	if app.movement.x != expectedMaxX {
 		t.Fatalf("x = %d", app.movement.x)
+	}
+	if app.movement.y != expectedMaxY {
+		t.Fatalf("y = %d", app.movement.y)
 	}
 }
 

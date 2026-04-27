@@ -11,7 +11,7 @@ type displayRect struct {
 
 type displayLayout []displayRect
 
-type movementBoundsProvider func(x, y int) (int, int)
+type movementBoundsProvider func(x, y int) (int, int, int, int)
 
 var displayLayoutProvider = readDisplayLayout
 
@@ -80,9 +80,9 @@ func (l displayLayout) clampWindowPositionToDisplay(index int, x, y, width, heig
 	return display.clampWindowPosition(x, y, width, height)
 }
 
-func (l displayLayout) movementBounds(x, y, width, height int) (int, int) {
+func (l displayLayout) movementBounds(x, y, width, height int) (int, int, int, int) {
 	if len(l) == 0 {
-		return x, x
+		return x, x, y, y
 	}
 
 	var intervals []displayInterval
@@ -110,12 +110,17 @@ func (l displayLayout) movementBounds(x, y, width, height int) (int, int) {
 			bestDistance = distance
 		}
 	}
-	return chosen.Min, chosen.Max
+	bounds := l.bounds()
+	maxY := bounds.Bottom - height
+	if maxY < bounds.Top {
+		maxY = bounds.Top
+	}
+	return chosen.Min, chosen.Max, bounds.Top, maxY
 }
 
-func (l displayLayout) movementBoundsForDisplay(index int, x, y, width, height int) (int, int) {
+func (l displayLayout) movementBoundsForDisplay(index int, x, y, width, height int) (int, int, int, int) {
 	if len(l) == 0 {
-		return x, x
+		return x, x, y, y
 	}
 	display, ok := l.display(index)
 	if !ok {
@@ -126,7 +131,11 @@ func (l displayLayout) movementBoundsForDisplay(index int, x, y, width, height i
 	if maxX < display.Left {
 		maxX = display.Left
 	}
-	return display.Left, maxX
+	maxY := display.Bottom - height
+	if maxY < display.Top {
+		maxY = display.Top
+	}
+	return display.Left, maxX, display.Top, maxY
 }
 
 func (l displayLayout) display(index int) (displayRect, bool) {
