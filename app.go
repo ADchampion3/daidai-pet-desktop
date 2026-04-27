@@ -102,6 +102,9 @@ func (a *App) startup(ctx context.Context) {
 
 	a.applyWindowSize()
 	a.moveWindow(x, y)
+	if err := setWindowManagerExclusion(a.ctx); err != nil {
+		log.Printf("startup: failed to apply window manager exclusion: %v", err)
+	}
 	if err := setWindowClickThrough(a.ctx, !a.currentDragEnabled()); err != nil {
 		log.Printf("startup: failed to apply click-through state: %v", err)
 	}

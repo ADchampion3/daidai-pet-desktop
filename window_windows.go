@@ -13,8 +13,13 @@ import (
 const (
 	gwlExStyle      = -20
 	wsExTransparent = 0x00000020
+	wsExToolWindow  = 0x00000080
+	wsExNoActivate  = 0x08000000
+	swpNoSize       = 0x0001
+	swpNoMove       = 0x0002
 	swpNoZOrder     = 0x0004
 	swpNoActivate   = 0x0010
+	swpFrameChanged = 0x0020
 	windowTitle     = "Pet"
 )
 
@@ -30,6 +35,31 @@ func setWindowClickThrough(ctx context.Context, enabled bool) error {
 		return nil
 	}
 
+	return updatePetWindowExStyle(func(style uintptr) uintptr {
+		if enabled {
+			return style | wsExTransparent
+		}
+		return style &^ wsExTransparent
+	})
+}
+
+func setWindowManagerExclusion(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+
+	return updatePetWindowExStyle(windowManagerExclusionStyle)
+}
+
+func windowManagerExclusionStyle(style uintptr) uintptr {
+	return style | wsExToolWindow | wsExNoActivate
+}
+
+func windowStyleRefreshFlags() uintptr {
+	return swpNoMove | swpNoSize | swpNoZOrder | swpNoActivate | swpFrameChanged
+}
+
+func updatePetWindowExStyle(transform func(uintptr) uintptr) error {
 	hwnd, err := getPetHwnd()
 	if err != nil {
 		return err
@@ -37,12 +67,7 @@ func setWindowClickThrough(ctx context.Context, enabled bool) error {
 
 	exStyleIndex := windowLongIndex(gwlExStyle)
 	style, _, _ := procGetWindowLongPtrW.Call(hwnd, exStyleIndex)
-	nextStyle := style
-	if enabled {
-		nextStyle |= wsExTransparent
-	} else {
-		nextStyle &^= wsExTransparent
-	}
+	nextStyle := transform(style)
 	if nextStyle == style {
 		return nil
 	}
@@ -50,6 +75,19 @@ func setWindowClickThrough(ctx context.Context, enabled bool) error {
 	ret, _, callErr := procSetWindowLongPtrW.Call(hwnd, exStyleIndex, nextStyle)
 	if ret == 0 && callErr != windows.ERROR_SUCCESS {
 		return fmt.Errorf("SetWindowLongPtrW: %w", callErr)
+	}
+
+	ret, _, callErr = procSetWindowPos.Call(
+		hwnd,
+		0,
+		0,
+		0,
+		0,
+		0,
+		windowStyleRefreshFlags(),
+	)
+	if ret == 0 && callErr != windows.ERROR_SUCCESS {
+		return fmt.Errorf("SetWindowPos: %w", callErr)
 	}
 	return nil
 }
