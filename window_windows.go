@@ -13,7 +13,6 @@ import (
 const (
 	gwlExStyle      = -20
 	wsExTransparent = 0x00000020
-	swpNoSize       = 0x0001
 	swpNoZOrder     = 0x0004
 	swpNoActivate   = 0x0010
 	windowTitle     = "Pet"
@@ -59,7 +58,7 @@ func windowLongIndex(value int32) uintptr {
 	return uintptr(uint32(value))
 }
 
-func setWindowPositionAbsolute(ctx context.Context, x, y int) error {
+func setWindowBoundsAbsolute(ctx context.Context, x, y, width, height int) error {
 	if ctx == nil {
 		return nil
 	}
@@ -74,9 +73,9 @@ func setWindowPositionAbsolute(ctx context.Context, x, y int) error {
 		0,
 		uintptr(int32(x)),
 		uintptr(int32(y)),
-		0,
-		0,
-		swpNoSize|swpNoZOrder|swpNoActivate,
+		uintptr(int32(width)),
+		uintptr(int32(height)),
+		swpNoZOrder|swpNoActivate,
 	)
 	if ret == 0 && callErr != windows.ERROR_SUCCESS {
 		return fmt.Errorf("SetWindowPos: %w", callErr)

@@ -111,6 +111,37 @@ func TestClampWindowPositionKeepsWindowInsideNearestDisplayAfterScale(t *testing
 	}
 }
 
+func TestWindowPhysicalSizeUsesDisplayDPIAtMonitorBoundary(t *testing.T) {
+	layout := displayLayout{
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080, DPIX: 96, DPIY: 96},
+		{Left: 1920, Top: 0, Right: 3200, Bottom: 1080, DPIX: 144, DPIY: 144},
+	}
+
+	width, height := layout.windowPhysicalSize(1900, 100, basePetWidth, basePetHeight)
+
+	if width != 90 || height != 138 {
+		t.Fatalf("physical size = %dx%d", width, height)
+	}
+}
+
+func TestMovementBoundsUseSelectedDisplayPhysicalSize(t *testing.T) {
+	withDisplayLayoutForTest(t, displayLayout{
+		{Left: 0, Top: 0, Right: 1920, Bottom: 1080, DPIX: 144, DPIY: 144},
+		{Left: 1920, Top: 0, Right: 3200, Bottom: 1080, DPIX: 96, DPIY: 96},
+	})
+	app := &App{cfg: newDefaultConfig()}
+	app.cfg.DisplayIndex = 0
+
+	_, maxX, _, maxY := app.movementBounds()
+
+	if maxX != 1920-90 {
+		t.Fatalf("maxX = %d", maxX)
+	}
+	if maxY != 1080-138 {
+		t.Fatalf("maxY = %d", maxY)
+	}
+}
+
 func TestMovementBoundsUseCurrentYVisibleInterval(t *testing.T) {
 	withDisplayLayoutForTest(t, displayLayout{
 		{Left: 0, Top: 0, Right: 1920, Bottom: 1080},

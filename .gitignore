@@ -1,5 +1,24 @@
-build/bin
-node_modules
-frontend/dist
+# Build output
+build/bin/
 *.exe
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Worktrees
 .worktrees/
+
+# Claude Code / AI
+.agents/
+.claude/

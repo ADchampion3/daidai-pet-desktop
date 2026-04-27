@@ -214,7 +214,9 @@ func (a *App) clampWindowPosition(x, y int) (int, int) {
 }
 
 func (a *App) clampWindowPositionForSize(x, y int, width, height int) (int, int) {
-	return getDisplayLayout().clampWindowPositionToDisplay(a.currentDisplayIndex(), x, y, width, height)
+	layout := getDisplayLayout()
+	physicalWidth, physicalHeight := layout.windowPhysicalSizeForDisplay(a.currentDisplayIndex(), width, height)
+	return layout.clampWindowPositionToDisplay(a.currentDisplayIndex(), x, y, physicalWidth, physicalHeight)
 }
 
 func (a *App) SetDragStart() {
@@ -377,7 +379,9 @@ func (a *App) moveWindow(x, y int) {
 		return
 	}
 
-	if err := setWindowPositionAbsolute(a.ctx, x, y); err != nil {
+	width, height := a.petSize()
+	physicalWidth, physicalHeight := getDisplayLayout().windowPhysicalSizeForDisplay(a.currentDisplayIndex(), width, height)
+	if err := setWindowBoundsAbsolute(a.ctx, x, y, physicalWidth, physicalHeight); err != nil {
 		log.Printf("moveWindow: failed to move window: %v", err)
 	}
 }
@@ -561,7 +565,8 @@ func (a *App) SetDisplayIndex(index int) {
 	}
 
 	width, height := a.petSize()
-	x, y := display.centerWindowPosition(width, height)
+	physicalWidth, physicalHeight := display.windowPhysicalSize(width, height)
+	x, y := display.centerWindowPosition(physicalWidth, physicalHeight)
 
 	a.mu.Lock()
 	if a.cfg == nil {

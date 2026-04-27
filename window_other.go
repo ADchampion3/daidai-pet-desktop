@@ -8,6 +8,6 @@ func setWindowClickThrough(ctx context.Context, enabled bool) error {
 	return nil
 }
 
-func setWindowPositionAbsolute(ctx context.Context, x, y int) error {
+func setWindowBoundsAbsolute(ctx context.Context, x, y, width, height int) error {
 	return nil
 }

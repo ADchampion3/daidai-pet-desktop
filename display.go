@@ -7,6 +7,8 @@ type displayRect struct {
 	Top    int
 	Right  int
 	Bottom int
+	DPIX   uint
+	DPIY   uint
 }
 
 type displayLayout []displayRect
@@ -127,6 +129,7 @@ func (l displayLayout) movementBoundsForDisplay(index int, x, y, width, height i
 		display = l[0]
 	}
 
+	width, height = display.windowPhysicalSize(width, height)
 	maxX := display.Right - width
 	if maxX < display.Left {
 		maxX = display.Left
@@ -145,8 +148,81 @@ func (l displayLayout) display(index int) (displayRect, bool) {
 	return l[index], true
 }
 
+func (l displayLayout) windowPhysicalSizeForDisplay(index int, width, height int) (int, int) {
+	if len(l) == 0 {
+		return width, height
+	}
+	display, ok := l.display(index)
+	if !ok {
+		display = l[0]
+	}
+	return display.windowPhysicalSize(width, height)
+}
+
+func (l displayLayout) windowPhysicalSize(x, y, width, height int) (int, int) {
+	if len(l) == 0 {
+		return width, height
+	}
+	display := l.displayForWindowPosition(x, y, width, height)
+	return display.windowPhysicalSize(width, height)
+}
+
+func (l displayLayout) displayForWindowPosition(x, y, width, height int) displayRect {
+	best := l[0]
+	bestArea := best.intersectionArea(x, y, width, height)
+	for _, display := range l[1:] {
+		if area := display.intersectionArea(x, y, width, height); area > bestArea {
+			best = display
+			bestArea = area
+		}
+	}
+	if bestArea > 0 {
+		return best
+	}
+
+	centerX := x + width/2
+	centerY := y + height/2
+	bestDistance := best.distanceSquaredToPoint(centerX, centerY)
+	for _, display := range l[1:] {
+		if distance := display.distanceSquaredToPoint(centerX, centerY); distance < bestDistance {
+			best = display
+			bestDistance = distance
+		}
+	}
+	return best
+}
+
 func (r displayRect) containsWindow(x, y, width, height int) bool {
 	return x >= r.Left && y >= r.Top && x+width <= r.Right && y+height <= r.Bottom
+}
+
+func (r displayRect) windowPhysicalSize(width, height int) (int, int) {
+	return scaleWithDPI(width, r.dpiX()), scaleWithDPI(height, r.dpiY())
+}
+
+func (r displayRect) intersectionArea(x, y, width, height int) int {
+	left := maxInt(r.Left, x)
+	top := maxInt(r.Top, y)
+	right := minInt(r.Right, x+width)
+	bottom := minInt(r.Bottom, y+height)
+	if right <= left || bottom <= top {
+		return 0
+	}
+	return (right - left) * (bottom - top)
+}
+
+func (r displayRect) dpiX() uint {
+	if r.DPIX == 0 {
+		return 96
+	}
+	return r.DPIX
+}
+
+func (r displayRect) dpiY() uint {
+	if r.DPIY == 0 {
+		return 96
+	}
+	return r.DPIY
 }
 
 func (r displayRect) centerWindowPosition(width, height int) (int, int) {
@@ -229,4 +305,22 @@ func mergeDisplayIntervals(intervals []displayInterval, windowWidth int) []displ
 
 func clampInt(value, minValue, maxValue int) int {
 	return int(math.Min(float64(maxValue), math.Max(float64(minValue), float64(value))))
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func scaleWithDPI(pixels int, dpi uint) int {
+	return pixels * int(dpi) / 96
 }
