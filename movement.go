@@ -9,8 +9,8 @@ import (
 const standDuration = 300 * time.Millisecond
 
 const (
-	minVerticalBounceOffset = 10
-	maxVerticalBounceOffset = 40
+	minVerticalBounceOffset = 30
+	maxVerticalBounceOffset = 100
 )
 
 type Movement struct {
